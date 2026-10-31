@@ -1,0 +1,58 @@
+require('dotenv').config();
+const mysql = require('mysql2/promise');
+const fs = require('fs');
+const path = require('path');
+
+const cfg = {
+  host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+};
+const DB_NAME = process.env.DB_NAME || 'quizverse';
+let pool;
+
+async function init() {
+  const boot = await mysql.createConnection(cfg);
+  await boot.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  await boot.end();
+  pool = mysql.createPool({ ...cfg, database: DB_NAME, waitForConnections: true, connectionLimit: 10, charset: 'utf8mb4' });
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
+  for (const stmt of sql.split(/;\s*$/m).map((s) => s.trim()).filter(Boolean)) await pool.query(stmt);
+  // upgrade databases created before the knockout format existed
+  await ensureColumn('rooms', 'questions_per_match', 'TINYINT UNSIGNED NOT NULL DEFAULT 3');
+  if (await ensureColumn('rooms', 'bot_count', 'TINYINT UNSIGNED NOT NULL DEFAULT 0')) {
+    await pool.query('UPDATE rooms SET bot_count = 1 WHERE bot_enabled = 1');
+  }
+  // player progress and character skins
+  await ensureColumn('users', 'xp', 'INT UNSIGNED NOT NULL DEFAULT 0');
+  await ensureColumn('users', 'wins', 'INT UNSIGNED NOT NULL DEFAULT 0');
+  await ensureColumn('users', 'tournaments', 'INT UNSIGNED NOT NULL DEFAULT 0');
+  await ensureColumn('users', 'skin', "VARCHAR(30) NOT NULL DEFAULT 'rookie'");
+  // typing-race tournaments have no quiz
+  await ensureColumn('rooms', 'game_type', "ENUM('quiz','typerace') NOT NULL DEFAULT 'quiz'");
+  await ensureColumn('rooms', 'text_length', "ENUM('short','medium','long') NOT NULL DEFAULT 'medium'");
+  const [[quizCol]] = await pool.query(
+    "SELECT IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'rooms' AND COLUMN_NAME = 'quiz_id'", [DB_NAME]);
+  if (quizCol && quizCol.nullable === 'NO') await pool.query('ALTER TABLE rooms MODIFY quiz_id INT UNSIGNED NULL');
+  await ensureColumn('room_players', 'skin', 'VARCHAR(30) NULL'); // bots get a random character
+  await ensureColumn('room_players', 'placement', 'SMALLINT UNSIGNED NULL');
+  await ensureColumn('room_answers', 'match_no', 'SMALLINT NOT NULL DEFAULT 0');
+  // rooms that were mid-game when the server stopped can never resume
+  await pool.query("UPDATE rooms SET status='finished', finished_at=NOW() WHERE status='playing'");
+}
+
+async function ensureColumn(table, column, ddl) {
+  const [[r]] = await pool.query(
+    'SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+    [DB_NAME, table, column]);
+  if (r.n) return false;
+  await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN ${column} ${ddl}`);
+  return true;
+}
+
+module.exports = {
+  init,
+  query: (...args) => pool.query(...args),
+  getConnection: () => pool.getConnection(),
+};
