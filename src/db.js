@@ -35,7 +35,17 @@ async function init() {
   const [[quizCol]] = await pool.query(
     "SELECT IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'rooms' AND COLUMN_NAME = 'quiz_id'", [DB_NAME]);
   if (quizCol && quizCol.nullable === 'NO') await pool.query('ALTER TABLE rooms MODIFY quiz_id INT UNSIGNED NULL');
-  await ensureColumn('room_players', 'skin', 'VARCHAR(30) NULL'); // bots get a random character
+  await ensureColumn('room_players', 'skin', 'VARCHAR(30) NULL'); // bots wear the default character
+  // analytics
+  await ensureColumn('room_answers', 'wpm', 'SMALLINT NULL');
+  await ensureColumn('room_answers', 'category', 'VARCHAR(50) NULL');
+  await ensureColumn('room_answers', 'created_at', 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
+  await ensureColumn('room_players', 'matches_played', 'SMALLINT UNSIGNED NOT NULL DEFAULT 0');
+  await ensureColumn('room_players', 'matches_won', 'SMALLINT UNSIGNED NOT NULL DEFAULT 0');
+  // typing races save the number of characters typed (up to ~270) in choice, which a TINYINT (max 127) cannot hold
+  const [[choiceCol]] = await pool.query(
+    "SELECT DATA_TYPE AS t FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'room_answers' AND COLUMN_NAME = 'choice'", [DB_NAME]);
+  if (choiceCol && choiceCol.t === 'tinyint') await pool.query('ALTER TABLE room_answers MODIFY choice SMALLINT NULL');
   await ensureColumn('room_players', 'placement', 'SMALLINT UNSIGNED NULL');
   await ensureColumn('room_answers', 'match_no', 'SMALLINT NOT NULL DEFAULT 0');
   // rooms that were mid-game when the server stopped can never resume

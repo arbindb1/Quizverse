@@ -11,7 +11,7 @@ Everything else (bracket, simultaneous matches, spectating, bots, invite links, 
 
 ## How the game works
 
-1. **Create** a quiz (questions with 2 to 4 answers, a time limit each) and put it in a category. The app also ships with starter categories and 10 ready-made public quizzes.
+1. **Create** a quiz (questions with 2 to 4 answers, a time limit each) and put it in a category. Instead of typing, you can **upload an Excel sheet** (`.xlsx`, `.xls` or `.csv`) with one question per row (`Question | Answer 1-4 | Correct | Seconds`); a "Download template" button gives you a ready sheet, and you can check the imported questions before saving. The app also ships with starter categories and 10 ready-made public quizzes.
 2. **Host a tournament**: pick a quiz, set the **player limit** (2 to 50), the **questions per match**, and optionally **bots** (a number, or fill every other slot).
 3. **Invite players** with the invite link (`/join/<token>`) or the 6-letter room code. They log in or register and land in your lobby.
 4. **Start**. Players are drawn at random into a single-elimination bracket:
@@ -36,10 +36,19 @@ Who advances: in a quiz match the player with more points; in a typing match the
 
 ### Bots
 
-- The host can add 0 to 49 bots, or fill every free slot with one click. Bots have names like Botty, Robo and Pixel, and each bot wears a **random character** (one of the 12) that nobody else in the room is using, so a bot can show up as the Dragon or the Ninja. Characters with clips (Rookie) play them for bots too.
+- The host can add 0 to 49 bots, or fill every free slot with one click. Bots have names like Botty, Robo and Pixel, and **every bot wears the default character (Rookie)**, including its clips.
 - Difficulty sets how often a bot answers correctly in a quiz (easy 40%, medium 65%, hard 90%, after a random delay) and how fast it types in a race (about 26, 48 and 78 words per minute, with some variation).
 - If the room is full of bots, a real player who opens the invite link takes the place of the newest bot.
 - Bots can play bots; those matches run automatically.
+
+## Analytics
+
+The **Analytics** page (top bar, or the "My analytics" button after a tournament) shows your own numbers, bots excluded:
+
+- **Typing:** average WPM, best WPM, average of your last 10 races with the trend against the 10 before, races typed and finished first, tournaments and match win rate, a **speed-per-race chart** with your average line, and a table of recent races.
+- **Quiz:** accuracy, average answer time, tournaments and match win rate, a plain sentence about **which category you excel at and which needs practice** (a category needs at least 3 questions answered), a **bar chart of accuracy by category**, and an **accuracy-per-tournament chart**.
+
+Only tournaments finished after this feature was added carry the category and WPM details.
 
 ## Characters and progression
 

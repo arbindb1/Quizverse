@@ -231,3 +231,35 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
 .tab { background: var(--card2); border: 2px solid var(--line); padding: 8px 16px; }
 .tab.on { border-color: var(--accent); background: #31388a; }
+
+/* ---- analytics page ---- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.tile-v { font-size: 30px; font-weight: 800; color: var(--accent2); line-height: 1.1; }
+.tile-l { font-weight: 700; margin-top: 4px; }
+.tile-s { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.bar-row { display: grid; grid-template-columns: 130px 1fr 120px; gap: 12px; align-items: center; margin: 10px 0; }
+.bar-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { height: 16px; background: var(--bg); border-radius: 99px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 99px; }
+.bar-fill.good { background: linear-gradient(90deg, #1fb88e, var(--accent2)); }
+.bar-fill.mid { background: linear-gradient(90deg, #e09a2d, var(--warn)); }
+.bar-fill.low { background: linear-gradient(90deg, #d0405e, var(--danger)); }
+.bar-val { font-weight: 700; text-align: right; }
+.chart { width: 100%; height: auto; display: block; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; }
+.chart .avgline { stroke: var(--warn); stroke-width: 2; stroke-dasharray: 6 5; }
+.chart .avgtext { fill: var(--warn); }
+.chart .series { fill: none; stroke: var(--accent2); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.chart .dot { fill: var(--accent2); stroke: var(--bg); stroke-width: 2; }
+.rtable { width: 100%; border-collapse: collapse; }
+.rtable th, .rtable td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); }
+.rtable th { color: var(--muted); font-size: 13px; border-top: 0; }
+@media (max-width: 600px) { .bar-row { grid-template-columns: 90px 1fr 90px; gap: 8px; } }
+
+/* ---- Excel import in the quiz editor ---- */
+.import-ok, .import-warn { margin-top: 12px; padding: 10px 14px; border-radius: 10px; font-size: 14px; }
+.import-ok { background: rgba(34, 211, 166, .12); border: 1px solid var(--accent2); }
+.import-warn { background: rgba(255, 184, 77, .1); border: 1px solid var(--warn); }
+.import-warn ul { margin: 6px 0 0 18px; padding: 0; }

@@ -12,6 +12,8 @@ const app = express();
 app.use(express.json({ limit: '200kb' }));
 const MEDIA_DIR = path.join(__dirname, '..', 'public', 'media');
 app.get('/api/media', (req, res) => res.set('Cache-Control', 'no-store').json(scanMedia(MEDIA_DIR)));
+// the spreadsheet reader used by the quiz editor's Excel import, served from our own server (works offline)
+app.get('/vendor/xlsx.js', (req, res) => res.sendFile(require.resolve('xlsx/dist/xlsx.full.min.js'), { maxAge: '7d' }));
 app.use('/api', api);
 app.get('/join/:token', (req, res) => res.redirect(`/#/join/${encodeURIComponent(req.params.token)}`));
 app.use(express.static(path.join(__dirname, '..', 'public')));

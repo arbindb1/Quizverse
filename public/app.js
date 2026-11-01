@@ -77,7 +77,7 @@ function logout() {
 
 function renderNav() {
   navEl.innerHTML = `<a class="brand" href="#/">Quiz<span>verse</span></a>` + (me
-    ? `<a href="#/">Home</a><a href="#/quizzes">Quizzes</a><a href="#/new-room">New tournament</a><a href="#/locker">Locker</a>
+    ? `<a href="#/">Home</a><a href="#/quizzes">Quizzes</a><a href="#/new-room">New tournament</a><a href="#/locker">Locker</a><a href="#/stats">Analytics</a>
        <span class="muted small">${esc(me.username)}</span><a href="#" id="logout">Log out</a>`
     : '') + `<a href="#" id="snd" title="Sound for videos">${soundOn ? '🔊' : '🔇'}</a>`;
   const l = $('#logout');
@@ -107,6 +107,7 @@ async function route() {
     if (page === 'login') return viewLogin();
     if (page === 'quizzes') return await viewQuizzes();
     if (page === 'locker') return await viewLocker();
+    if (page === 'stats') return await viewStats();
     if (page === 'quiz') return await viewQuizEdit(arg);
     if (page === 'new-room') return await viewNewRoom(arg);
     if (page === 'join') return await viewJoin(decodeURIComponent(arg || ''));
@@ -192,6 +193,25 @@ async function viewQuizzes() {
 
 const blankQuestion = () => ({ text: '', options: ['', '', '', ''], correct_index: 0, time_limit: 20 });
 
+/* ---- Excel import for the quiz editor ---- */
+let xlsxPromise = null;
+const loadXlsx = () => (window.XLSX ? Promise.resolve(window.XLSX) : (xlsxPromise = xlsxPromise || new Promise((ok, fail) => {
+  const s = document.createElement('script');
+  s.src = '/vendor/xlsx.js';
+  s.onload = () => ok(window.XLSX);
+  s.onerror = () => fail(new Error('Could not load the spreadsheet reader'));
+  document.head.appendChild(s);
+})));
+
+async function downloadQuizTemplate() {
+  const X = await loadXlsx();
+  const ws = X.utils.aoa_to_sheet(QUIZ_TEMPLATE);
+  ws['!cols'] = [{ wch: 44 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 10 }];
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, ws, 'Quiz');
+  X.writeFile(wb, 'quizverse-quiz-template.xlsx');
+}
+
 async function viewQuizEdit(id) {
   const cats = await api('GET', '/categories');
   let draft = { title: '', description: '', category_id: '', is_public: true, questions: [blankQuestion()] };
@@ -202,6 +222,25 @@ async function viewQuizEdit(id) {
       questions: q.questions.map((x) => ({ ...x, options: [...x.options, '', '', ''].slice(0, 4) })),
     };
   }
+  let importNote = '';
+  // read the first sheet of an .xlsx/.xls/.csv file and add its questions to the editor (the user reviews them before saving)
+  const importExcel = async (file) => {
+    const X = await loadXlsx();
+    const wb = X.read(await file.arrayBuffer(), { type: 'array' });
+    const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false });
+    const { questions, problems } = parseQuizRows(rows);
+    const list = problems.slice(0, 10).map((p) => `<li>Row ${p.row}: ${esc(p.reason)}</li>`).join('') + (problems.length > 10 ? `<li>…and ${problems.length - 10} more</li>` : '');
+    if (!questions.length) {
+      importNote = `<div class="import-warn"><b>No questions were imported from "${esc(file.name)}".</b>${list ? `<ul>${list}</ul>` : ' The sheet looks empty.'}</div>`;
+    } else {
+      const blank = draft.questions.length === 1 && !draft.questions[0].text.trim() && draft.questions[0].options.every((o) => !o.trim());
+      const room = 50 - (blank ? 0 : draft.questions.length);
+      const take = questions.slice(0, room);
+      draft.questions = (blank ? [] : draft.questions).concat(take);
+      importNote = `<div class="import-ok">✅ Imported ${take.length} question${take.length === 1 ? '' : 's'} from "${esc(file.name)}". Check them below, then press Save.${questions.length > take.length ? ` (A quiz holds at most 50 questions, ${questions.length - take.length} were left out.)` : ''}</div>${list ? `<div class="import-warn">Skipped rows:<ul>${list}</ul></div>` : ''}`;
+    }
+    draw();
+  };
   const draw = () => {
     app.innerHTML = `<div class="card"><h2>${id && id !== 'new' ? 'Edit quiz' : 'Create quiz'}</h2>
       <label>Title</label><input data-f="title" maxlength="120" value="${esc(draft.title)}">
@@ -211,6 +250,9 @@ async function viewQuizEdit(id) {
         ${cats.map((c) => `<option value="${c.id}" ${String(c.id) === String(draft.category_id) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
         <input class="grow" id="newcat" placeholder="or create a new category" maxlength="50"><button class="ghost" id="addcat">Add</button></div>
       <label class="check"><input type="checkbox" data-f="is_public" ${draft.is_public ? 'checked' : ''}> Public (others can host tournaments with this quiz)</label></div>
+      <div class="card"><h3>📥 Import questions from Excel</h3>
+        <p class="muted small">Upload a .xlsx, .xls or .csv file with one question per row: <b>Question | Answer 1 | Answer 2 | Answer 3 | Answer 4 | Correct | Seconds</b>. Correct can be 1–4, A–D or the exact answer text; Seconds is optional; leave answers 3 and 4 empty for true/false. You can check everything before saving.</p>
+        <div class="row"><input type="file" id="xlfile" accept=".xlsx,.xls,.csv" style="max-width:340px"><button class="ghost" id="xltemplate">Download template</button></div>${importNote}</div>
       ${draft.questions.map((q, i) => `<div class="q-card"><div class="row between"><b>Question ${i + 1}</b>
         ${draft.questions.length > 1 ? `<button class="danger" data-rm="${i}">Remove</button>` : ''}</div>
         <input data-q="${i}" data-k="text" placeholder="Question text" maxlength="500" value="${esc(q.text)}">
@@ -221,17 +263,26 @@ async function viewQuizEdit(id) {
       <p class="muted small">Select the radio button next to the correct answer. Leave answers 3 and 4 blank for true/false style questions.</p>`;
   };
   draw();
-  app.oninput = app.onchange = (e) => {
+  const onField = (e) => {
     const t = e.target;
     if (t.dataset.f) draft[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
     else if (t.dataset.o !== undefined) draft.questions[t.dataset.q].options[t.dataset.o] = t.value;
     else if (t.dataset.k === 'correct') draft.questions[t.dataset.q].correct_index = Number(t.value);
     else if (t.dataset.k) draft.questions[t.dataset.q][t.dataset.k] = t.dataset.k === 'time_limit' ? Number(t.value) : t.value;
   };
+  app.oninput = onField;
+  app.onchange = (e) => {
+    if (e.target.id === 'xlfile') {
+      if (e.target.files[0]) importExcel(e.target.files[0]).catch((err) => toast(err.message));
+      return;
+    }
+    onField(e);
+  };
   app.onclick = async (e) => {
     const t = e.target;
     try {
-      if (t.id === 'addq') { draft.questions.push(blankQuestion()); draw(); }
+      if (t.id === 'xltemplate') await downloadQuizTemplate();
+      else if (t.id === 'addq') { draft.questions.push(blankQuestion()); draw(); }
       else if (t.dataset.rm !== undefined) { draft.questions.splice(Number(t.dataset.rm), 1); draw(); }
       else if (t.id === 'addcat') {
         const c = await api('POST', '/categories', { name: $('#newcat').value });
@@ -279,6 +330,70 @@ async function viewLocker() {
     if (!b) return;
     try { await api('POST', '/profile/skin', { skin: b.dataset.skin }); toast('Character selected', true); viewLocker(); }
     catch (err) { toast(err.message); }
+  };
+}
+
+/* ---------------- analytics ---------------- */
+const tile = (label, value, sub = '') => `<div class="tile"><div class="tile-v">${value}</div><div class="tile-l">${label}</div>${sub ? `<div class="tile-s">${sub}</div>` : ''}</div>`;
+const fmtDate = (d) => { const x = new Date(d); return Number.isNaN(x.getTime()) ? '' : x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+const niceMax = (m) => [8, 20, 40, 60, 80, 100, 120, 160, 200, 240, 320, 400].find((v) => v >= m * 1.05) || Math.ceil((m * 1.05) / 80) * 80;
+
+// A simple line chart drawn as SVG: values over time, optional dashed average line, tooltips on the dots
+function lineChart(values, { unit = '', avg = null, max = null, titles = [], from = '', to = '' } = {}) {
+  if (!values.length) return '<p class="muted">Nothing to chart yet.</p>';
+  const W = 640, H = 230, L = 48, R = 14, T = 14, B = 28;
+  const top = max || niceMax(Math.max(...values, avg || 0));
+  const x = (i) => (values.length === 1 ? (L + W - R) / 2 : L + (i / (values.length - 1)) * (W - L - R));
+  const y = (v) => T + (1 - v / top) * (H - T - B);
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => `<line x1="${L}" x2="${W - R}" y1="${y(top * f)}" y2="${y(top * f)}" class="grid"/><text x="${L - 6}" y="${y(top * f) + 4}" text-anchor="end" class="axis">${Math.round(top * f)}${unit}</text>`).join('');
+  const line = values.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const dots = values.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="4.5" class="dot"><title>${esc(titles[i] || v + unit)}</title></circle>`).join('');
+  const avgLine = avg ? `<line x1="${L}" x2="${W - R}" y1="${y(avg)}" y2="${y(avg)}" class="avgline"/><text x="${W - R}" y="${y(avg) - 6}" text-anchor="end" class="axis avgtext">average ${Math.round(avg)}${unit}</text>` : '';
+  const xs = `<text x="${L}" y="${H - 6}" class="axis">${esc(from)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" class="axis">${esc(to)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">${grid}${avgLine}<polyline points="${line}" class="series"/>${dots}${xs}</svg>`;
+}
+
+const categoryBars = (rows) => rows.map((c) => `<div class="bar-row"><div class="bar-label" title="${esc(c.category)}">${esc(c.category)}</div>
+  <div class="bar-track"><div class="bar-fill ${c.accuracy >= 70 ? 'good' : c.accuracy >= 45 ? 'mid' : 'low'}" style="width:${Math.max(c.accuracy, 2)}%"></div></div>
+  <div class="bar-val">${c.accuracy}% <span class="muted small">${c.correct}/${c.asked}</span></div></div>`).join('');
+
+function quizStatsHtml(q) {
+  if (!q.asked) return '<div class="card"><p class="muted">No quiz answers yet. Play a quiz tournament and your strengths show up here.</p></div>';
+  const best = q.best ? `<p>🌟 You <b>excel at ${esc(q.best.category)}</b>: ${q.best.accuracy}% right (${q.best.correct} of ${q.best.asked}).</p>`
+    : '<p class="muted">Answer at least 3 questions in a category to see where you excel.</p>';
+  const worst = q.worst ? `<p>🎯 <b>Practice ${esc(q.worst.category)}</b>: only ${q.worst.accuracy}% right (${q.worst.correct} of ${q.worst.asked}).</p>` : '';
+  return `<div class="tiles">${tile('Accuracy', q.accuracy + '%', `${q.correct} of ${q.asked} answers right`)}${tile('Average answer time', (q.avgTimeMs / 1000).toFixed(1) + 's')}
+      ${tile('Tournaments played', q.tournaments, `${q.wins} won`)}${tile('Match win rate', q.matches ? q.matchWinRate + '%' : '–', `${q.matchWins} of ${q.matches} matches`)}</div>
+    <div class="card"><h3>Where you excel</h3>${best}${worst}</div>
+    <div class="card"><h3>Accuracy by category</h3>${categoryBars(q.byCategory)}</div>
+    <div class="card"><h3>Accuracy per tournament</h3>${lineChart(q.series.map((p) => p.accuracy), { unit: '%', max: 100, avg: q.accuracy,
+      titles: q.series.map((p) => `Tournament ${p.n}: ${p.accuracy}% (${p.asked} questions) ${fmtDate(p.date)}`), from: q.series[0] ? fmtDate(q.series[0].date) : '', to: q.series.length > 1 ? fmtDate(q.series[q.series.length - 1].date) : '' })}</div>`;
+}
+
+function typingStatsHtml(t) {
+  if (!t.races) return '<div class="card"><p class="muted">No typing races yet. Play a typing race tournament and your speed shows up here.</p></div>';
+  const trend = t.trend == null ? 'play more races for a trend' : `${t.trend >= 0 ? '▲' : '▼'} ${Math.abs(t.trend)} vs the 10 races before`;
+  return `<div class="tiles">${tile('Average speed', t.avgWpm + ' WPM')}${tile('Best speed', t.bestWpm + ' WPM')}${tile('Last 10 races', t.last10Wpm + ' WPM', trend)}
+      ${tile('Races typed', t.races, `${t.finished} finished first`)}${tile('Tournaments played', t.tournaments, `${t.wins} won`)}${tile('Match win rate', t.matches ? t.matchWinRate + '%' : '–', `${t.matchWins} of ${t.matches} matches`)}</div>
+    <div class="card"><h3>Speed per race (last ${t.series.length})</h3>${lineChart(t.series.map((p) => p.wpm), { unit: '', avg: t.avgWpm,
+      titles: t.series.map((p) => `Race ${p.n}: ${p.wpm} WPM, ${p.chars} characters${p.finished ? ', finished' : ''} ${fmtDate(p.date)}`), from: t.series[0] ? fmtDate(t.series[0].date) : '', to: t.series.length > 1 ? fmtDate(t.series[t.series.length - 1].date) : '' })}
+      <p class="muted small">WPM = words per minute (5 characters = 1 word). Hover a dot for details.</p></div>
+    <div class="card"><h3>Recent races</h3><table class="rtable"><tr><th>Date</th><th>Speed</th><th>Characters</th><th>Result</th></tr>
+      ${t.recent.map((p) => `<tr><td>${fmtDate(p.date)}</td><td><b>${p.wpm} WPM</b></td><td>${p.chars}</td><td>${p.finished ? '🏁 finished first' : 'time ran out'}</td></tr>`).join('')}</table></div>`;
+}
+
+async function viewStats() {
+  const s = await api('GET', '/stats');
+  let tab = s.typing.races > s.quiz.asked ? 'typing' : 'quiz';
+  const draw = () => {
+    app.innerHTML = `<div class="card"><h2 style="margin:0">📊 Your analytics</h2><p class="muted small" style="margin-bottom:0">Based on the tournaments you played. Bots are not counted.</p></div>
+      <div class="tabs"><button class="tab ${tab === 'quiz' ? 'on' : ''}" data-stab="quiz">🧠 Quiz</button><button class="tab ${tab === 'typing' ? 'on' : ''}" data-stab="typing">⌨️ Typing</button></div>
+      ${tab === 'quiz' ? quizStatsHtml(s.quiz) : typingStatsHtml(s.typing)}`;
+  };
+  draw();
+  app.onclick = (e) => {
+    const b = e.target.closest('[data-stab]');
+    if (b) { tab = b.dataset.stab; draw(); }
   };
 }
 
@@ -794,7 +909,7 @@ function drawRoom() {
       ${R.bracket ? `<div class="card"><h3>Final bracket</h3>${bracketHtml(R.bracket)}</div>` : ''}
       <div class="card"><h3>Standings</h3>${board.map((s) => `<div class="player ${mine && s.id === mine.id ? 'me' : ''}">
         <span>${charOf(s.id, 'sm')}${esc(s.name)}${s.isBot ? '<span class="tag bot">BOT</span>' : ''} <span class="muted small">${placeLabel(s.placement)}</span></span><span class="score">${s.score} pts</span></div>`).join('')}
-      <div class="row" style="margin-top:14px"><a class="btn" href="#/">Home</a>${isHost ? '<a class="btn green" href="#/new-room">Host another</a>' : ''}</div></div>`;
+      <div class="row" style="margin-top:14px"><a class="btn" href="#/">Home</a><a class="btn ghost" href="#/stats">📊 My analytics</a>${isHost ? '<a class="btn green" href="#/new-room">Host another</a>' : ''}</div></div>`;
     mountVideos();
     return;
   }

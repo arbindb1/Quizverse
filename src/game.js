@@ -162,22 +162,20 @@ async function startGame(state) {
   const isType = state.gameType === 'typerace';
   let questions = [];
   if (!isType) [questions] = await db.query(
-    'SELECT id, text, options, correct_index, time_limit FROM questions WHERE quiz_id = (SELECT quiz_id FROM rooms WHERE code = ?) ORDER BY position, id',
+    `SELECT q.id, q.text, q.options, q.correct_index, q.time_limit, c.name AS category FROM questions q
+       JOIN quizzes z ON z.id = q.quiz_id LEFT JOIN categories c ON c.id = z.category_id
+      WHERE q.quiz_id = (SELECT quiz_id FROM rooms WHERE code = ?) ORDER BY q.position, q.id`,
     [state.code]);
   if (!isType && !questions.length) throw new Error('This quiz has no questions');
   await db.query("UPDATE rooms SET status='playing', started_at=NOW() WHERE code = ?", [state.code]);
   await db.query('UPDATE room_players SET score = 0, placement = NULL WHERE room_id = (SELECT id FROM rooms WHERE code = ?)', [state.code]);
 
-  // bots wear a random character; fix up any that collide with a player's (or an older room's bots that have none)
-  const taken = new Set(state.players.filter((p) => !p.isBot).map((p) => p.skin || 'rookie'));
+  // every bot wears the default character (Rookie)
   for (const p of state.players.filter((x) => x.isBot)) {
-    if (!p.skin || taken.has(p.skin)) {
-      const free = SKINS.filter((s) => !taken.has(s.id));
-      const pool = free.length ? free : SKINS;
-      p.skin = pool[Math.floor(Math.random() * pool.length)].id;
+    if (p.skin !== 'rookie') {
+      p.skin = 'rookie';
       await db.query('UPDATE room_players SET skin = ? WHERE id = ?', [p.skin, p.id]);
     }
-    taken.add(p.skin);
   }
   const players = new Map(state.players.map((p) => [p.id, { id: p.id, userId: p.userId, name: p.name, isBot: p.isBot, skin: p.isBot ? p.skin : p.skin || 'rookie', score: 0, placement: null, mp: 0, mw: 0, seen: new Map() }]));
   const g = {
@@ -325,7 +323,7 @@ function reveal(g, m) {
     g.players.get(id).score += pts;
     if (id === m.a) m.scoreA += pts;
     else m.scoreB += pts;
-    g.log.push([id, rt.q.id, a ? a.choice : null, a && a.correct ? 1 : 0, pts, a ? a.timeMs : null, rt.no]);
+    g.log.push([id, rt.q.id, a ? a.choice : null, a && a.correct ? 1 : 0, pts, a ? a.timeMs : null, rt.no, null, rt.q.category || null]);
     return { playerId: id, choice: a ? a.choice : null, correct: !!(a && a.correct), points: pts };
   });
   rt.qDone++;
@@ -429,8 +427,9 @@ function endRace(g, m, finisherId) {
     const timeMs = finished ? rt.finished.get(id) : null;
     const points = Math.round((800 * pos) / len) + (finished ? 200 : 0);
     g.players.get(id).score += points;
-    g.log.push([id, 0, pos, finished ? 1 : 0, points, timeMs, rt.no]);
-    return { playerId: id, pos, finished, timeMs, points, wpm: Math.round(pos / 5 / ((timeMs || elapsed || 1) / 60000)) };
+    const wpm = Math.round(pos / 5 / ((timeMs || elapsed || 1) / 60000));
+    g.log.push([id, 0, pos, finished ? 1 : 0, points, timeMs, rt.no, wpm, null]);
+    return { playerId: id, pos, finished, timeMs, points, wpm };
   });
   if (winnerId === m.a) m.scoreA++;
   else if (winnerId === m.b) m.scoreB++;
@@ -506,10 +505,10 @@ async function finishTournament(g) {
   try {
     const [[room]] = await db.query('SELECT id FROM rooms WHERE code = ?', [g.code]);
     for (const p of g.players.values()) {
-      await db.query('UPDATE room_players SET score = ?, placement = ? WHERE id = ?', [p.score, p.placement, p.id]);
+      await db.query('UPDATE room_players SET score = ?, placement = ?, matches_played = ?, matches_won = ? WHERE id = ?', [p.score, p.placement, p.mp, p.mw, p.id]);
     }
     if (g.log.length) {
-      await db.query('INSERT INTO room_answers (room_id, player_id, question_id, choice, is_correct, points, time_ms, match_no) VALUES ?',
+      await db.query('INSERT INTO room_answers (room_id, player_id, question_id, choice, is_correct, points, time_ms, match_no, wpm, category) VALUES ?',
         [g.log.map((l) => [room.id, ...l])]);
     }
     await db.query("UPDATE rooms SET status='finished', finished_at=NOW() WHERE id = ?", [room.id]);

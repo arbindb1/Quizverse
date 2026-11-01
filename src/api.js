@@ -5,6 +5,7 @@ const db = require('./db');
 const { sign, requireAuth } = require('./auth');
 const { lobbyState } = require('./rooms');
 const game = require('./game');
+const { buildStats } = require('./stats');
 const { SKINS, byId, levelFor, xpAt, progressOf, isUnlocked, requirementText } = require('./skins');
 
 const router = express.Router();
@@ -49,6 +50,25 @@ function profileOf(u) {
 
 // public: the look of every character (needed on the login page too)
 router.get('/skins', (req, res) => res.json(SKINS.map(({ id, name, emoji, c1, c2 }) => ({ id, name, emoji, c1, c2 }))));
+
+// analytics: the player's own answers (bots are never counted), quiz and typing separately
+router.get('/stats', requireAuth, wrap(async (req, res) => {
+  const uid = req.user.id;
+  const [quizRows] = await db.query(
+    `SELECT a.room_id, a.is_correct, a.time_ms, a.created_at,
+            COALESCE(a.category, (SELECT c.name FROM questions q JOIN quizzes z ON z.id = q.quiz_id JOIN categories c ON c.id = z.category_id WHERE q.id = a.question_id)) AS category
+       FROM room_answers a JOIN room_players p ON p.id = a.player_id AND p.user_id = ?
+       JOIN rooms r ON r.id = a.room_id AND r.game_type = 'quiz' ORDER BY a.id`, [uid]);
+  const [typingRows] = await db.query(
+    `SELECT a.room_id, a.choice AS chars, a.is_correct AS finished, a.time_ms, a.created_at,
+            COALESCE(a.wpm, CASE WHEN a.is_correct = 1 AND a.time_ms > 0 THEN ROUND(a.choice / 5 / (a.time_ms / 60000)) END) AS wpm
+       FROM room_answers a JOIN room_players p ON p.id = a.player_id AND p.user_id = ?
+       JOIN rooms r ON r.id = a.room_id AND r.game_type = 'typerace' ORDER BY a.id`, [uid]);
+  const [summary] = await db.query(
+    `SELECT r.game_type, COUNT(*) AS tournaments, SUM(p.placement = 1) AS wins, SUM(p.matches_played) AS matches, SUM(p.matches_won) AS match_wins
+       FROM room_players p JOIN rooms r ON r.id = p.room_id WHERE p.user_id = ? AND r.status = 'finished' GROUP BY r.game_type`, [uid]);
+  res.json(buildStats({ quizRows, typingRows, summary }));
+}));
 
 router.get('/profile', requireAuth, wrap(async (req, res) => {
   const [[u]] = await db.query('SELECT xp, wins, tournaments, skin FROM users WHERE id = ?', [req.user.id]);
@@ -170,17 +190,8 @@ const botName = (i) => BOT_NAMES[i % BOT_NAMES.length] + (i >= BOT_NAMES.length 
 async function setBots(q, roomId, want) {
   const [bots] = await q.query('SELECT id FROM room_players WHERE room_id = ? AND is_bot = 1 ORDER BY id', [roomId]);
   if (want > bots.length) {
-    // every bot gets a random character that nobody else in the room is using (all 12 taken: repeats are allowed)
-    const [used] = await q.query(
-      'SELECT COALESCE(u.skin, p.skin) AS skin FROM room_players p LEFT JOIN users u ON u.id = p.user_id WHERE p.room_id = ?', [roomId]);
-    const taken = new Set(used.map((r) => r.skin));
-    const rows = Array.from({ length: want - bots.length }, (_, k) => {
-      const free = SKINS.filter((s) => !taken.has(s.id));
-      const pool = free.length ? free : SKINS;
-      const skin = pool[Math.floor(Math.random() * pool.length)].id;
-      taken.add(skin);
-      return [roomId, 1, botName(bots.length + k), skin];
-    });
+    // every bot wears the default character (Rookie)
+    const rows = Array.from({ length: want - bots.length }, (_, k) => [roomId, 1, botName(bots.length + k), 'rookie']);
     await q.query('INSERT INTO room_players (room_id, is_bot, display_name, skin) VALUES ?', [rows]);
   } else if (want < bots.length) {
     await q.query('DELETE FROM room_players WHERE id IN (?)', [bots.slice(want).map((b) => b.id)]);

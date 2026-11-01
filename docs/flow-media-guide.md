@@ -51,7 +51,7 @@ Audio idea: cheering crowd and a short fanfare. Make sure the clip ends on a cal
 
 ## Bot pictures (12 images, now optional)
 
-Bots now wear a random player character, so these robot pictures are only used for bots that have no character (bots in rooms created before this change). You can skip this section.
+Bots now wear the default player character (Rookie), so these robot pictures are only used for bots that have no character yet (bots in rooms created before this change). You can skip this section.
 
 Square (1:1), about 512x512, saved as **PNG**, ideally under 150 KB. They are shown as small circles (22 px) in the bracket and lobby and as a large circle (96 px) on the VS screen.
 
