@@ -114,12 +114,9 @@ async function seed() {
   const extra = ['Art & Literature', 'Animals & Nature', 'Mathematics', 'Languages', 'Video Games'];
   for (const name of extra) await db.query('INSERT IGNORE INTO categories (name) VALUES (?)', [name]);
 
-  let [[owner]] = await db.query('SELECT id FROM users WHERE username = ?', [SYSTEM_USER]);
-  if (!owner) {
-    // '!' is not a valid bcrypt hash, so nobody can ever log in as this account
-    const [r] = await db.query('INSERT INTO users (username, password_hash) VALUES (?, ?)', [SYSTEM_USER, '!']);
-    owner = { id: r.insertId };
-  }
+  // '!' is not a valid bcrypt hash, so nobody can ever log in as this account
+  await db.query('INSERT IGNORE INTO users (username, password_hash) VALUES (?, ?)', [SYSTEM_USER, '!']);
+  const [[owner]] = await db.query('SELECT id FROM users WHERE username = ?', [SYSTEM_USER]);
 
   let added = 0;
   for (const [category, title, description, questions] of QUIZZES) {
@@ -133,6 +130,25 @@ async function seed() {
     added++;
   }
   if (added) console.log(`Seeded ${added} starter quizzes`);
+  await seedDrawWords();
 }
 
-module.exports = { seed, QUIZZES };
+// The words of Draw & Guess live in the table draw_words. The table is filled when it holds fewer than 1000 words; after that it is left alone, so words added or removed by hand stay that way.
+async function seedDrawWords() {
+  const { BY_CATEGORY } = require('./drawwords');
+  const rows = [];
+  const seen = new Set();
+  for (const [category, list] of Object.entries(BY_CATEGORY)) {
+    for (const raw of list.split(',')) {
+      const w = raw.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (/^[a-z ]{2,40}$/.test(w) && !seen.has(w)) { seen.add(w); rows.push([w, category]); }
+    }
+  }
+  const [[{ n: before }]] = await db.query('SELECT COUNT(*) AS n FROM draw_words');
+  if (before >= 1000) return;
+  for (let i = 0; i < rows.length; i += 400) await db.query('INSERT IGNORE INTO draw_words (word, category) VALUES ?', [rows.slice(i, i + 400)]);
+  const [[{ n: after }]] = await db.query('SELECT COUNT(*) AS n FROM draw_words');
+  console.log(`Draw & Guess words in the database: ${after} (${after - before} added)`);
+}
+
+module.exports = { seed, seedDrawWords, QUIZZES };

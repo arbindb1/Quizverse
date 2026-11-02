@@ -1,4 +1,5 @@
 const db = require('./db');
+const { parseLook } = require('./look');
 
 async function lobbyState(code) {
   const [[room]] = await db.query(
@@ -9,17 +10,17 @@ async function lobbyState(code) {
       WHERE r.code = ?`, [code]);
   if (!room) return null;
   const [players] = await db.query(
-    `SELECT p.id, p.user_id, p.is_bot, p.display_name, p.score, COALESCE(u.skin, p.skin) AS skin FROM room_players p
+    `SELECT p.id, p.user_id, p.is_bot, p.display_name, p.score, COALESCE(u.skin, p.skin) AS skin, u.look FROM room_players p
        LEFT JOIN users u ON u.id = p.user_id WHERE p.room_id = ? ORDER BY p.id`, [room.id]);
   return {
     code: room.code,
     inviteToken: room.invite_token,
     name: room.name,
     hostId: room.host_id,
-    hostName: room.host_name,
+    hostName: (players.find((p) => p.user_id === room.host_id) || {}).display_name || room.host_name, // a guest host shows the name they typed
     gameType: room.game_type,
     textLength: room.text_length,
-    quizTitle: room.quiz_title || 'Typing race',
+    quizTitle: room.quiz_title || (room.game_type === 'draw' ? 'Draw & Guess' : 'Typing race'),
     questionCount: room.question_count,
     maxPlayers: room.max_players,
     botEnabled: room.bot_count > 0,
@@ -28,7 +29,7 @@ async function lobbyState(code) {
     questionsPerMatch: room.questions_per_match,
     status: room.status,
     players: players.map((p) => ({
-      id: p.id, userId: p.user_id, name: p.display_name, isBot: !!p.is_bot, skin: p.skin || (p.is_bot ? null : 'rookie'),
+      id: p.id, userId: p.user_id, name: p.display_name, isBot: !!p.is_bot, skin: p.skin || (p.is_bot ? null : 'rookie'), look: parseLook(p.look), // Draw & Guess shows everybody as a Custom Doodle
       isHost: p.user_id === room.host_id, score: p.score,
     })),
   };

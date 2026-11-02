@@ -1,9 +1,11 @@
 const { Server } = require('socket.io');
 const db = require('./db');
-const { verify } = require('./auth');
+const { verify, accountState } = require('./auth');
 const { lobbyState } = require('./rooms');
+const { parseLook } = require('./look');
 const TYPE_TEXTS = require('./typetexts');
 const { SKINS, levelFor, isUnlocked } = require('./skins');
+const draw = require('./draw');
 
 /*
  * Single-elimination tournament with simultaneous matches. Players are shuffled into a bracket; every
@@ -25,13 +27,17 @@ let io;
 
 function init(httpServer) {
   io = new Server(httpServer);
-  io.use((socket, next) => {
+  draw.init(io, { broadcastLobby: (c) => broadcastLobby(c), awardProgress: (g) => awardProgress(g), finalBoard: (c) => finalBoard(c) });
+  io.use(async (socket, next) => {
     try {
       socket.data.user = verify(socket.handshake.auth.token || '');
-      next();
     } catch {
-      next(new Error('unauthorized'));
+      return next(new Error('unauthorized'));
     }
+    try {
+      if ((await accountState(socket.data.user.id)) !== 'ok') return next(new Error('suspended'));
+    } catch { /* database hiccup: let the player in, the REST calls check again */ }
+    next();
   });
 
   io.on('connection', (socket) => {
@@ -43,9 +49,11 @@ function init(httpServer) {
         if (!state.players.some((p) => p.userId === socket.data.user.id)) throw new Error('You have not joined this room');
         socket.data.code = code;
         socket.join(code);
+        socket.join(`${code}:u${socket.data.user.id}`); // private channel (the drawer's secret word goes here)
         socket.emit('lobby', state);
         const g = games.get(code);
-        if (g) sendState(socket, g);
+        if (draw.has(code)) draw.sendState(socket);
+        else if (g) sendState(socket, g);
         else if (state.status === 'finished') socket.emit('game:end', { board: await finalBoard(code) });
         if (ack) ack({ ok: true });
       } catch (e) {
@@ -59,7 +67,7 @@ function init(httpServer) {
         const state = code && (await lobbyState(code));
         if (!state) throw new Error('Join a room first');
         if (state.hostId !== socket.data.user.id) throw new Error('Only the host can start');
-        if (state.status !== 'lobby' || games.has(code)) throw new Error('Game already started');
+        if (state.status !== 'lobby' || games.has(code) || draw.has(code)) throw new Error('Game already started');
         if (state.players.length < 2) throw new Error('Need at least 2 players (add bots to play solo)');
         await startGame(state);
         if (ack) ack({ ok: true });
@@ -67,6 +75,18 @@ function init(httpServer) {
         if (ack) ack({ ok: false, error: e.message });
       }
     });
+
+    // Draw & Guess
+    socket.on('draw:seg', (seg) => draw.onSeg(socket, seg));
+    socket.on('draw:fill', (f) => draw.onFill(socket, f));
+    socket.on('draw:undo', () => draw.onUndo(socket));
+    socket.on('draw:clear', () => draw.onClear(socket));
+    socket.on('draw:pick', (word) => draw.onPick(socket, word));
+    socket.on('draw:guess', (text) => draw.onGuess(socket, text));
+    socket.on('draw:emote', (e) => draw.onEmote(socket, e));
+    socket.on('draw:react', (v) => draw.onReact(socket, v));
+    socket.on('draw:kick', (id) => draw.onKick(socket, id));
+    socket.on('draw:votekick', (id) => draw.onVoteKick(socket, id));
 
     socket.on('game:answer', (choice) => {
       const g = games.get(socket.data.code);
@@ -159,6 +179,7 @@ function after(list, fn, ms) {
 const clear = (list) => { list.forEach(clearTimeout); list.length = 0; };
 
 async function startGame(state) {
+  if (state.gameType === 'draw') return draw.start(state);
   const isType = state.gameType === 'typerace';
   let questions = [];
   if (!isType) [questions] = await db.query(
@@ -177,7 +198,7 @@ async function startGame(state) {
       await db.query('UPDATE room_players SET skin = ? WHERE id = ?', [p.skin, p.id]);
     }
   }
-  const players = new Map(state.players.map((p) => [p.id, { id: p.id, userId: p.userId, name: p.name, isBot: p.isBot, skin: p.isBot ? p.skin : p.skin || 'rookie', score: 0, placement: null, mp: 0, mw: 0, seen: new Map() }]));
+  const players = new Map(state.players.map((p) => [p.id, { id: p.id, userId: p.userId, name: p.name, isBot: p.isBot, skin: p.isBot ? p.skin : p.skin || 'rookie', look: p.look || null, score: 0, placement: null, mp: 0, mw: 0, seen: new Map() }]));
   const g = {
     code: state.code,
     difficulty: state.botDifficulty,
@@ -209,7 +230,7 @@ async function startGame(state) {
 const bracketPayload = (g) => ({
   rounds: g.rounds,
   perMatch: g.perMatch,
-  players: Object.fromEntries([...g.players.values()].map((p) => [p.id, { name: p.name, isBot: p.isBot, skin: p.skin }])),
+  players: Object.fromEntries([...g.players.values()].map((p) => [p.id, { name: p.name, isBot: p.isBot, skin: p.skin, look: p.look }])),
 });
 
 const matchInfo = (m) => ({ round: m.round, index: m.index, a: m.a, b: m.b });
@@ -467,9 +488,10 @@ function endMatch(g, m, winnerId) {
 
 async function finalBoard(code) {
   const [rows] = await db.query(
-    `SELECT p.id, p.display_name AS name, p.is_bot AS isBot, p.score, p.placement FROM room_players p
-       JOIN rooms r ON r.id = p.room_id WHERE r.code = ? ORDER BY p.placement IS NULL, p.placement, p.score DESC, p.id`, [code]);
-  return rows.map((r) => ({ ...r, isBot: !!r.isBot }));
+    `SELECT p.id, p.display_name AS name, p.is_bot AS isBot, p.score, p.placement, COALESCE(u.skin, p.skin) AS skin, u.look FROM room_players p
+       JOIN rooms r ON r.id = p.room_id LEFT JOIN users u ON u.id = p.user_id WHERE r.code = ? ORDER BY p.placement IS NULL, p.placement, p.score DESC, p.id`, [code]);
+  // skin and look are included so the end screen can draw everybody even when the page was opened after the game finished
+  return rows.map((r) => ({ ...r, isBot: !!r.isBot, look: parseLook(r.look) }));
 }
 
 // XP and tournament credit for the human players. A room with only one human (the rest bots) is practice:
@@ -479,12 +501,12 @@ async function awardProgress(g) {
   const rewards = {};
   if (!humans.length) return rewards;
   const full = humans.length >= 2;
-  const [rows] = await db.query('SELECT id, xp, wins, tournaments FROM users WHERE id IN (?)', [humans.map((h) => h.userId)]);
+  const [rows] = await db.query('SELECT id, xp, wins, tournaments, is_guest FROM users WHERE id IN (?)', [humans.map((h) => h.userId)]);
   const before = new Map(rows.map((r) => [r.id, r]));
   const placementBonus = { 1: 100, 2: 50, 3: 25, 5: 10 };
   for (const p of humans) {
     const u = before.get(p.userId);
-    if (!u) continue;
+    if (!u || u.is_guest) continue; // guests earn nothing
     let xp = 20 + 10 * p.mp + 30 * p.mw + (placementBonus[p.placement] || 0);
     if (!full) xp = Math.round(xp * 0.25);
     const after = { xp: u.xp + xp, wins: u.wins + (full && p.placement === 1 ? 1 : 0), tournaments: u.tournaments + (full ? 1 : 0) };
@@ -520,4 +542,21 @@ async function finishTournament(g) {
   await broadcastLobby(g.code);
 }
 
-module.exports = { init, broadcastLobby, startGame };
+// admin tools: disconnect a suspended/deleted player, close a room (and stop its game if one is running)
+function kickUser(userId) {
+  if (!io) return;
+  for (const s of io.sockets.sockets.values()) if (s.data.user && s.data.user.id === userId) s.disconnect(true);
+}
+
+function abortRoom(code) {
+  draw.abort(code);
+  const g = games.get(code);
+  if (g) {
+    clear(g.timers);
+    for (const rt of g.rt.values()) clear(rt.timers);
+    games.delete(code);
+  }
+  if (io) io.to(code).emit('room:closed');
+}
+
+module.exports = { init, broadcastLobby, startGame, kickUser, abortRoom };

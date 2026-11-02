@@ -438,7 +438,7 @@ Every prompt already contains this ending: *Locked camera, no zoom, no pan, no c
 
 **enter** (2 to 3 s, file `public/media/skins/dragon/enter.mp4`)
 
-> Animate the character from the picture, the cool young anthropomorphic emerald dragon with curved golden horns, small folded wings and a dark green jacket: swooping in from the left, landing with a thump and a small puff of fire, folding the wings. Locked camera, no zoom, no pan, no cuts. Same flat dark indigo background, same character design as the first frame, no text, no extra characters, the character stays centered.
+> Animate the character from the picture, the cool young anthropomorphic emerald dragon with curved golden horns, small folded wings and a dark green jacket: sweeping a long stream of fire from the mouth along the ground toward the right, then beckoning with one claw (come and get it), the wings flaring once. Locked camera, no zoom, no pan, no cuts. Same flat dark indigo background, same character design as the first frame, no text, no extra characters, the character stays centered.
 
 **ready** (2 to 3 s, loop, file `public/media/skins/dragon/ready.mp4`)
 
@@ -458,11 +458,11 @@ Every prompt already contains this ending: *Locked camera, no zoom, no pan, no c
 
 **win** (3 to 4 s, file `public/media/skins/dragon/win.mp4`)
 
-> Animate the character from the picture, the cool young anthropomorphic emerald dragon with curved golden horns, small folded wings and a dark green jacket: breathing a ring of colorful sparks upward like fireworks, the wings spreading wide. Locked camera, no zoom, no pan, no cuts. Same flat dark indigo background, same character design as the first frame, no text, no extra characters, the character stays centered.
+> Animate the character from the picture, the cool young anthropomorphic emerald dragon with curved golden horns, small folded wings and a dark green jacket: raising the head and breathing one tall column of fire from the mouth straight up like a firework that bursts into golden sparks, the wings spreading wide. Locked camera, no zoom, no pan, no cuts. Same flat dark indigo background, same character design as the first frame, no text, no extra characters, the character stays centered.
 
 **lose** (3 s, file `public/media/skins/dragon/lose.mp4`)
 
-> Animate the character from the picture, the cool young anthropomorphic emerald dragon with curved golden horns, small folded wings and a dark green jacket: a puff of smoke, the wings drooping and a slump, the little flame going out. Locked camera, no zoom, no pan, no cuts. Same flat dark indigo background, same character design as the first frame, no text, no extra characters, the character stays centered.
+> Animate the character from the picture, the cool young anthropomorphic emerald dragon with curved golden horns, small folded wings and a dark green jacket: an angry stomp, then a short sharp burst of fire from the mouth straight at the camera, fists clenched, thick smoke from the nostrils, the wings snapping open then drooping. Locked camera, no zoom, no pan, no cuts. Same flat dark indigo background, same character design as the first frame, no text, no extra characters, the character stays centered.
 
 **champion** (5 to 6 s, file `public/media/skins/dragon/champion.mp4`)
 
@@ -548,3 +548,11 @@ Every prompt already contains this ending: *Locked camera, no zoom, no pan, no c
 
 > Animate the character from the picture, the calm champion hero in a white and gold armor-jacket with a laurel-and-light crown, a flowing golden cape and a golden aura: lifting a golden trophy overhead as a huge golden light burst, confetti and rays fill the frame, the aura blazing. Locked camera, no zoom, no pan, no cuts. Same flat dark indigo background, same character design as the first frame, no text, no extra characters, the character stays centered.
 
+
+### Dragon: fire from the mouth (image-prompt touches)
+
+Every win, lose and face-off move of the Dragon uses fire from the mouth, each with a different move. For the start/end pictures add:
+
+- face-off picture: *a thin stream of flame and embers curling from the lips*
+- win picture: *head raised, a column of golden embers rising from the mouth*
+- angry (lose) picture: *jaws slightly open, orange glow inside the mouth, thick smoke*

@@ -6,7 +6,17 @@ CREATE TABLE IF NOT EXISTS users (
   wins INT UNSIGNED NOT NULL DEFAULT 0,
   tournaments INT UNSIGNED NOT NULL DEFAULT 0,
   skin VARCHAR(30) NOT NULL DEFAULT 'rookie',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  email VARCHAR(190) NULL,
+  is_admin TINYINT(1) NOT NULL DEFAULT 0,
+  is_banned TINYINT(1) NOT NULL DEFAULT 0,
+  ban_reason VARCHAR(200) NULL,
+  last_login_at TIMESTAMP NULL,
+  last_seen_at TIMESTAMP NULL,
+  login_count INT UNSIGNED NOT NULL DEFAULT 0,
+  is_guest TINYINT(1) NOT NULL DEFAULT 0,
+  look TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_users_email (email)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -46,7 +56,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   invite_token CHAR(24) NOT NULL UNIQUE,
   host_id INT UNSIGNED NOT NULL,
   quiz_id INT UNSIGNED NULL,
-  game_type ENUM('quiz','typerace') NOT NULL DEFAULT 'quiz',
+  game_type ENUM('quiz','typerace','draw') NOT NULL DEFAULT 'quiz',
   text_length ENUM('short','medium','long') NOT NULL DEFAULT 'medium',
   name VARCHAR(80) NOT NULL,
   max_players TINYINT UNSIGNED NOT NULL DEFAULT 8,
@@ -94,4 +104,44 @@ CREATE TABLE IF NOT EXISTS room_answers (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
   FOREIGN KEY (player_id) REFERENCES room_players(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS visits (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  visitor_id CHAR(36) NOT NULL,
+  user_id INT UNSIGNED NULL,
+  page VARCHAR(30) NOT NULL,
+  device VARCHAR(10) NOT NULL DEFAULT 'desktop',
+  ref_host VARCHAR(100) NULL,
+  ip_hash CHAR(16) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_visits_created (created_at),
+  KEY idx_visits_visitor (visitor_id, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS user_skins (
+  user_id INT UNSIGNED NOT NULL,
+  skin VARCHAR(30) NOT NULL,
+  granted_by INT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, skin),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS admin_log (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  admin_id INT UNSIGNED NULL,
+  admin_name VARCHAR(30) NOT NULL,
+  action VARCHAR(40) NOT NULL,
+  target VARCHAR(60) NULL,
+  details TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS draw_words (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  word VARCHAR(40) NOT NULL,
+  category VARCHAR(30) NOT NULL DEFAULT 'other',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_draw_words_word (word)
 ) ENGINE=InnoDB;

@@ -23,7 +23,7 @@ input[type=checkbox], input[type=radio] { width: auto; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 15px; margin: 10px 0; }
 button, .btn { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 700; cursor: pointer; display: inline-block; }
 button:hover, .btn:hover { filter: brightness(1.12); }
-button.ghost { background: var(--card2); }
+button.ghost, .btn.ghost { background: var(--card2); }
 button.danger { background: var(--danger); }
 button.green { background: var(--accent2); color: #062b22; }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -263,3 +263,298 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .import-ok { background: rgba(34, 211, 166, .12); border: 1px solid var(--accent2); }
 .import-warn { background: rgba(255, 184, 77, .1); border: 1px solid var(--warn); }
 .import-warn ul { margin: 6px 0 0 18px; padding: 0; }
+
+/* admin CMS */
+.admin-tabs { flex-wrap: wrap; }
+.atable { width: 100%; border-collapse: collapse; font-size: 14px; }
+.atable th, .atable td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.atable th a { color: var(--muted); text-decoration: none; }
+.aform label { display: block; margin-top: 10px; }
+
+/* Draw & Guess */
+.draw-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dhint { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; justify-content: center; min-height: 34px; }
+.hl { display: inline-block; min-width: 20px; border-bottom: 3px solid var(--muted); text-align: center; font-size: 26px; font-weight: 800; line-height: 30px; text-transform: uppercase; }
+.hgap { width: 16px; }
+.hlen { align-self: center; }
+.dtimer { font-weight: 800; font-size: 20px; min-width: 60px; text-align: right; }
+.dtimer.low { color: var(--danger); }
+.draw-main { display: grid; grid-template-columns: 200px minmax(0, 1fr) 240px; gap: 12px; align-items: start; }
+.draw-players .player { padding: 6px 4px; }
+.canvas-wrap { position: relative; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+#dcanvas { width: 100%; height: auto; display: block; touch-action: none; cursor: crosshair; background: #fff; }
+.doverlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; background: rgba(13, 16, 35, 0.86); color: #fff; padding: 16px; }
+.dtools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--line); }
+.swatch.on, .dtools .on { outline: 3px solid var(--accent2); }
+.dtools .sep { width: 10px; }
+.sz { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; }
+.sz i { display: block; background: currentColor; border-radius: 50%; }
+.draw-chat { display: flex; flex-direction: column; height: 520px; }
+.dchat { flex: 1; overflow-y: auto; font-size: 14px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.cm.ok { color: var(--accent2); } .cm.warn { color: var(--warn); } .cm.priv { color: var(--accent2); font-style: italic; }
+@media (max-width: 900px) { .draw-main { grid-template-columns: 1fr; } .draw-chat { height: 240px; } .draw-players { order: 3; } }
+.draw .ok, .doverlay .ok { color: var(--accent2); }
+.draw { width: min(1240px, calc(100vw - 32px)); position: relative; left: 50%; transform: translateX(-50%); }
+
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; margin-top: 18px; min-height: 300px; }
+.pod { width: 190px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+.pod-who { text-align: center; margin-bottom: 8px; animation: podin 0.8s ease-out both; }
+.pod-name { font-weight: 800; margin-top: 6px; word-break: break-word; }
+.pod-score { color: var(--accent2); font-weight: 700; }
+.crown { font-size: 34px; animation: podbob 1.6s ease-in-out infinite; }
+.pod-step { width: 100%; border-radius: 12px 12px 0 0; display: flex; align-items: flex-start; justify-content: center; font-size: 34px; font-weight: 900; padding-top: 8px; animation: podgrow 0.9s ease-out both; }
+.pod.first .pod-step { height: 150px; background: linear-gradient(#ffd84d, #e0a800); color: #5a4300; }
+.pod.second .pod-step { height: 105px; background: linear-gradient(#d9dde6, #9aa3b5); color: #3b4252; animation-delay: 0.15s; }
+.pod.third .pod-step { height: 75px; background: linear-gradient(#e0a070, #b06a30); color: #4a2a10; animation-delay: 0.3s; }
+@keyframes podgrow { from { transform: scaleY(0); transform-origin: bottom; } to { transform: scaleY(1); transform-origin: bottom; } }
+@keyframes podin { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes podbob { 50% { transform: translateY(-6px); } }
+@media (max-width: 600px) { .pod { width: 31%; } }
+
+/* ---------- Skribbl side: a livelier theme ---------- */
+body.skr { background: radial-gradient(circle at 20% 10%, rgba(255, 190, 70, 0.22), transparent 40%), radial-gradient(circle at 85% 0%, rgba(60, 220, 190, 0.2), transparent 45%), linear-gradient(135deg, #1c1470, #4a1c93 50%, #b52b78); background-attachment: fixed; }
+body.skr::before { content: ''; position: fixed; z-index: -1; inset: 0; pointer-events: none; opacity: 0.35; background-image: radial-gradient(rgba(255, 255, 255, 0.18) 1.5px, transparent 1.5px); background-size: 28px 28px; }
+body.skr .card { background: rgba(20, 16, 56, 0.78); border-color: rgba(255, 255, 255, 0.14); backdrop-filter: blur(6px); }
+body.skr nav, body.skr #nav { background: rgba(20, 16, 56, 0.7); }
+.skr-wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; align-items: stretch; position: relative; }
+.skr-logo { text-align: center; font-size: 54px; font-weight: 900; letter-spacing: 1px; margin-top: 4px; text-shadow: 0 4px 0 rgba(0, 0, 0, 0.35); }
+.skr-logo span { display: inline-block; animation: skrbounce 2.4s ease-in-out infinite; animation-delay: calc(var(--i) * 0.12s); }
+.skr-logo span:nth-child(5n+1) { color: #ff5d7a; } .skr-logo span:nth-child(5n+2) { color: #ffb84d; } .skr-logo span:nth-child(5n+3) { color: #ffe14d; }
+.skr-logo span:nth-child(5n+4) { color: #22d3a6; } .skr-logo span:nth-child(5n) { color: #6aa8ff; }
+@keyframes skrbounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-9px) rotate(-3deg); } }
+.auth-tabs { display: flex; gap: 6px; background: rgba(0, 0, 0, 0.25); padding: 5px; border-radius: 14px; max-width: 420px; margin: 0 auto 14px; }
+.auth-tabs a { flex: 1; text-align: center; padding: 10px 12px; border-radius: 10px; color: var(--muted); font-weight: 800; }
+.auth-tabs a.on { background: var(--accent); color: #fff; }
+.skr-wrap .auth-tabs { margin-bottom: 0; width: 100%; }
+.skr-card { padding: 22px; border-radius: 20px; display: flex; flex-direction: column; gap: 10px; }
+.skr-invite { background: rgba(34, 211, 166, 0.14); border: 1px solid rgba(34, 211, 166, 0.5); border-radius: 12px; padding: 10px 14px; }
+.skr-invite.bad { background: rgba(255, 93, 122, 0.14); border-color: rgba(255, 93, 122, 0.5); }
+.skr-pick { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; justify-items: center; }
+.skr-pick .skr-arrow { width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 26px; line-height: 1; background: rgba(255, 255, 255, 0.12); }
+.skr-avatar { text-align: center; }
+.skr-cname { font-weight: 800; margin-top: 6px; }
+.skr-dots { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.skr-dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); cursor: pointer; }
+.skr-dots i.on { background: var(--accent2); transform: scale(1.3); }
+.skr-play { font-size: 22px; font-weight: 900; padding: 16px; border-radius: 14px; background: linear-gradient(#37e0b0, #12b886); color: #052e22; box-shadow: 0 5px 0 #0a7a5a; margin-top: 8px; }
+.skr-play:active { transform: translateY(3px); box-shadow: 0 2px 0 #0a7a5a; }
+.skr-alt { width: 100%; }
+.skr-hi { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.skr-hi .skr-pick { width: 100%; }
+.skr-how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.skr-how div { background: rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.skr-how b { color: #fff; font-size: 15px; }
+@media (max-width: 560px) { .skr-how { grid-template-columns: 1fr; } .skr-logo { font-size: 40px; } }
+
+/* draw screen extras */
+.draw-top { flex-wrap: wrap; position: relative; overflow: hidden; }
+.dleft { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
+.dwho { font-weight: 800; color: var(--accent2); }
+.tbar { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(255, 255, 255, 0.1); }
+.tbar #dbar { height: 100%; background: linear-gradient(90deg, #22d3a6, #ffe14d); transition: width 0.3s linear; }
+.tbar #dbar.low { background: var(--danger); }
+.draw-players .player { position: relative; border-radius: 10px; transition: background 0.2s; }
+.draw-players .player .rk { font-size: 11px; font-weight: 800; color: var(--muted); min-width: 24px; }
+.draw-players .player .pn { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.draw-players .player.guessed { background: rgba(34, 211, 166, 0.18); }
+.draw-players .player.drawing { box-shadow: 0 0 0 2px #ffb84d; animation: skrpulse 1.6s ease-in-out infinite; }
+@keyframes skrpulse { 50% { box-shadow: 0 0 0 4px rgba(255, 184, 77, 0.4); } }
+.canvas-wrap { box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); border: 3px solid rgba(255, 255, 255, 0.85); }
+.dtools { background: rgba(255, 255, 255, 0.08); padding: 10px; border-radius: 14px; }
+.dchat .cm { padding: 4px 8px; border-radius: 8px; }
+.dchat .cm:nth-child(even) { background: rgba(255, 255, 255, 0.05); }
+.dchat .cm.ok { background: rgba(34, 211, 166, 0.16); font-weight: 700; }
+.dchat .cm.warn { background: rgba(255, 184, 77, 0.16); }
+
+/* ---------- Custom Doodle ---------- */
+.cc { display: block; width: var(--s); height: var(--s); border-radius: var(--r, 12px); position: relative; overflow: hidden; box-sizing: border-box; background: radial-gradient(circle at 50% 35%, #6a5cff55, #1d1f4a); }
+.cstage { position: absolute; inset: 0; transform: translateY(9%) scale(1.12); transform-origin: 50% 45%; }
+.cl { position: absolute; display: block; }
+.cl.cbase { left: 0; top: 0; width: 100%; height: 100%; }
+.le { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+.le-prev { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.le-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.le-tabs button { background: rgba(255, 255, 255, 0.1); padding: 8px 12px; }
+.le-tabs button.on { background: var(--accent); }
+.le-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; max-height: 300px; overflow-y: auto; padding: 2px; }
+.le-opt { height: 74px; padding: 6px; background: #5a5f73; border: 2px solid transparent; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.le-opt img { max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
+.le-opt.none { font-weight: 800; color: #fff; }
+.le-opt.on, .le-sw.on { border-color: var(--accent2); box-shadow: 0 0 0 2px var(--accent2); }
+.le-sw { height: 54px; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.3); padding: 0; }
+@media (max-width: 640px) { .le { grid-template-columns: 1fr; } }
+.char.md .cc, .char.lg .cc, .char.xl .cc { border: 3px solid rgba(255, 255, 255, .18); }
+.skin-art .cc { width: 100%; height: auto; aspect-ratio: 1 / 1; --r: 14px; }
+.vs-card .char.full .cc { width: 100%; height: 100%; border: 0; border-radius: 0; }
+
+/* player rows in Draw & Guess: fixed slots and a big picture, so rows never change shape and the faces can be read */
+.draw-main { grid-template-columns: 236px minmax(0, 1fr) 240px; }
+.draw-players .player { display: grid; grid-template-columns: 62px minmax(0, 1fr) 52px; align-items: center; gap: 8px; height: 74px; padding: 0 8px; margin-bottom: 6px; box-sizing: border-box; }
+.draw-players .player .pa { display: flex; justify-content: center; }
+.draw-players .player .pa .char, body.skr .draw-players .player .pa .char.sm { margin: 0; --s: 62px; }
+.draw-players .player .pa .cc { border: 2px solid rgba(255, 255, 255, .25); }
+.draw-players .player .pa .cstage, body.skr .draw-players .player .pa .char.sm .cstage { transform: translateY(3%) scale(1.3); transform-origin: 50% 38%; }
+.draw-players .player .pinfo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.draw-players .player .pnm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.draw-players .player .psub { display: flex; align-items: center; gap: 8px; height: 20px; }
+.draw-players .player .rk { font-size: 12px; font-weight: 800; color: var(--muted); min-width: 26px; }
+.draw-players .player .pst { font-size: 17px; line-height: 1; width: 22px; }
+.draw-players .player .psc { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.draw-players .player .psc b { color: var(--accent2); font-size: 17px; }
+.draw-players .player .psc i { font-style: normal; font-size: 12px; min-height: 14px; }
+/* bigger faces in the other lists of the Skribbl side too (lobby, standings) */
+body.skr .player .char.sm { --s: 46px; }
+body.skr .player .char.sm .cstage { transform: translateY(3%) scale(1.3); transform-origin: 50% 38%; }
+@media (max-width: 900px) { .draw-main { grid-template-columns: 1fr; } }
+
+/* everybody after the top three: an even grid under the podium, like skribbl */
+.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.pg { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px 10px; background: rgba(255, 255, 255, 0.07); border-radius: 14px; border: 2px solid transparent; }
+.pg.me { border-color: var(--accent); background: rgba(124, 92, 255, 0.2); }
+.pg-rk { position: absolute; left: 8px; top: 6px; font-size: 12px; font-weight: 800; color: var(--muted); }
+.pg .char.md { margin: 0; --s: 64px; }
+.pg .cc { border: 2px solid rgba(255, 255, 255, .25); }
+.pg .cstage { transform: translateY(3%) scale(1.3); transform-origin: 50% 38%; }
+.pg-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-sc { color: var(--accent2); font-weight: 700; font-size: 14px; }
+
+/* wider and taller chat in Draw & Guess */
+.draw-main { grid-template-columns: 236px minmax(0, 1fr) 330px; }
+.draw-chat { height: 720px; }
+.dchat { font-size: 15px; }
+#dguess { font-size: 15px; }
+@media (max-width: 900px) { .draw-main { grid-template-columns: 1fr; } .draw-chat { height: 320px; } }
+
+.cl.cbase { overflow: visible; }
+.le-opt svg { width: 100%; height: 100%; display: block; }
+.le-opt { background: #3a3f6a; }
+
+.cl.mir { transform: scaleX(-1); }
+
+/* a calmer editor: three sections, one row of small tabs, a roomy grid */
+.le { grid-template-columns: 230px minmax(0, 1fr); }
+.le-sections { display: flex; gap: 8px; margin-bottom: 10px; }
+.le-sections button { flex: 1; padding: 10px 8px; font-size: 15px; background: rgba(255, 255, 255, 0.1); }
+.le-sections button.on { background: var(--accent); }
+.le-tabs { gap: 6px; margin-bottom: 8px; }
+.le-tabs button { padding: 6px 11px; font-size: 14px; border-radius: 99px; background: rgba(255, 255, 255, 0.08); }
+.le-tabs button.on { background: var(--accent2); color: #052e22; }
+.le-hint { margin: 0 0 8px; }
+.le-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); max-height: 360px; }
+.le-opt { height: 84px; }
+
+/* the editor shows the whole body so the body types can be judged; lists and lobbies keep the head-and-shoulders view */
+.cc.full .cstage { transform: translateY(1%) scale(0.98); transform-origin: 50% 50%; }
+.le-prev .char.xl { --s: 236px; }
+
+.le-tint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.le-ts { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); }
+.le-ts.orig { background: #3a3f6a; font-size: 15px; line-height: 1; }
+.le-ts.on { outline: 3px solid var(--accent2); }
+.le-tinthint { margin: 10px 0 0; }
+
+.le-btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+/* ---------- the drawing game uses the whole window ---------- */
+.fsbtn { padding: 4px 10px; font-size: 18px; line-height: 1; }
+.draw-players .player .pnm { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.2; }
+.dchat .cm { overflow-wrap: anywhere; }
+.pg-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; text-align: center; line-height: 1.2; }
+.pod-name { overflow-wrap: anywhere; }
+@media (min-width: 1000px) {
+  body.draw-live main { max-width: none; padding: 10px 16px 14px; }
+  body.draw-live .draw { position: static; left: auto; transform: none; width: 100%; height: calc(100vh - 86px); min-height: 560px; display: flex; flex-direction: column; gap: 10px; }
+  body.draw-live .draw-top { flex: none; margin: 0; }
+  body.draw-live .draw-main { flex: 1; min-height: 0; grid-template-columns: clamp(250px, 19vw, 340px) minmax(0, 1fr) clamp(280px, 22vw, 420px); align-items: stretch; gap: 14px; }
+  body.draw-live .draw-players, body.draw-live .draw-chat { height: auto; min-height: 0; overflow-y: auto; }
+  body.draw-live .draw-center { display: flex; flex-direction: column; align-items: center; min-height: 0; }
+  body.draw-live .canvas-wrap, body.draw-live .dtools { width: min(100%, max(360px, calc((100vh - 300px) * 1.3333))); }
+}
+
+/* names get up to three lines; smaller pictures on smaller windows so the name keeps its room */
+.draw-players .player { height: 80px; }
+.draw-players .player .pnm { -webkit-line-clamp: 3; font-size: 15px; line-height: 1.15; }
+.draw-players .player .psub { height: 18px; }
+@media (max-width: 1500px) {
+  .draw-players .player { grid-template-columns: 54px minmax(0, 1fr) 46px; gap: 6px; padding: 0 6px; }
+  .draw-players .player .pa .char, body.skr .draw-players .player .pa .char.sm { --s: 54px; }
+  .draw-players .player .psc b { font-size: 15px; }
+}
+
+/* quiet scrollbars that match the theme (no bright white bars) */
+.draw-players, .dchat, .le-grid, .draw-chat { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.28) transparent; }
+.draw-players::-webkit-scrollbar, .dchat::-webkit-scrollbar, .le-grid::-webkit-scrollbar { width: 8px; }
+.draw-players::-webkit-scrollbar-thumb, .dchat::-webkit-scrollbar-thumb, .le-grid::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.28); border-radius: 8px; }
+.draw-players::-webkit-scrollbar-track, .dchat::-webkit-scrollbar-track, .le-grid::-webkit-scrollbar-track { background: transparent; }
+/* shorter windows: tighter rows so eight players fit without scrolling */
+@media (max-height: 900px) {
+  .draw-players .player { height: 64px; margin-bottom: 4px; }
+  .draw-players .player .pa .char, body.skr .draw-players .player .pa .char.sm { --s: 48px; }
+  .draw-players .player { grid-template-columns: 48px minmax(0, 1fr) 46px; }
+  .draw-players .player .pnm { -webkit-line-clamp: 2; font-size: 14px; }
+  .draw-players h3 { margin: 4px 0 8px; }
+}
+
+@media (max-height: 800px) {
+  .draw-players .player { height: 56px; }
+  .draw-players .player .pa .char, body.skr .draw-players .player .pa .char.sm { --s: 42px; }
+  .draw-players .player { grid-template-columns: 42px minmax(0, 1fr) 44px; }
+}
+
+/* ---------- emotes, likes, kick and vote ---------- */
+.demotes { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.demotes button { padding: 4px 7px; font-size: 20px; line-height: 1; background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+.demotes button:active { transform: scale(0.85); }
+.emofly { position: fixed; z-index: 60; font-size: 34px; pointer-events: none; animation: emofly 2s ease-out forwards; }
+@keyframes emofly { 0% { transform: translateY(0) scale(0.6); opacity: 0; } 15% { opacity: 1; transform: translateY(-14px) scale(1.2); } 100% { transform: translateY(-90px) scale(1); opacity: 0; } }
+.dlike { display: flex; gap: 6px; }
+.lk { padding: 5px 10px; font-size: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 99px; }
+.lk.on { background: var(--accent2); color: #052e22; }
+.lk.on.bad { background: var(--danger); color: #fff; }
+.lk:disabled { opacity: 0.7; cursor: default; }
+.draw-players .player { position: relative; }
+.pk { position: absolute; top: 3px; right: 3px; padding: 1px 5px; font-size: 12px; line-height: 1.4; border-radius: 8px; background: rgba(0, 0, 0, 0.35); opacity: 0.35; z-index: 2; }
+.player:hover .pk, .pk.on { opacity: 1; }
+.pk.on { background: var(--warn); color: #3a2400; }
+
+/* the board uses the space: its width is set from script (--cw), the panels beside it share what is left */
+@media (min-width: 1000px) {
+  body.draw-live .draw-main { grid-template-columns: minmax(250px, 1fr) var(--cw, 62%) minmax(300px, 1.2fr); }
+  body.draw-live .draw-center { width: 100%; align-items: stretch; }
+  body.draw-live .canvas-wrap, body.draw-live .dtools { width: 100%; }
+}
+
+/* click a player: a menu opens on their row */
+.draw-players .player.clickable { cursor: pointer; }
+.draw-players .player.clickable:hover { background: rgba(255, 255, 255, 0.1); }
+.phint { margin: -4px 0 8px; }
+.pmenu { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 4px 8px; background: rgba(14, 12, 40, 0.97); border: 2px solid var(--accent); border-radius: 10px; font-size: 13px; line-height: 1.2; }
+.pmenu > span:first-child { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.pm-b { display: flex; gap: 6px; }
+.pm-b button { padding: 4px 10px; font-size: 13px; border-radius: 8px; }
+.pvote { position: absolute; top: 2px; right: 6px; font-size: 11px; color: var(--warn); font-weight: 700; z-index: 2; }
+.pk { display: none; }
+
+/* end of a turn: everybody's points of this turn, highest first */
+.rcard { width: min(440px, 92%); max-height: 68%; overflow-y: auto; background: rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 6px; margin-top: 6px; }
+.rrow { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 5px 12px; border-radius: 10px; text-align: left; }
+.rrow:nth-child(odd) { background: rgba(255, 255, 255, 0.06); }
+.rname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.rgain { font-weight: 800; font-size: 20px; color: var(--accent2); }
+.rrow.zero .rgain { color: var(--muted); font-weight: 600; }
+.rpic .char { margin: 0; --s: 36px; }
+.rpic .cc { border: 2px solid rgba(255, 255, 255, .25); }
+.rpic .cstage { transform: translateY(3%) scale(1.3); transform-origin: 50% 38%; }
+
+.emotoggle { padding: 3px 10px; font-size: 12px; margin-bottom: 6px; border-radius: 99px; }
+
+/* like and dislike sit in the top right corner of the whiteboard */
+.dlike-corner { position: absolute; top: 10px; right: 10px; z-index: 6; gap: 8px; }
+.dlike-corner .lk { padding: 7px 14px; font-size: 18px; background: rgba(20, 16, 56, 0.82); backdrop-filter: blur(4px); border: 1px solid rgba(255, 255, 255, 0.25); }
+.dlike-corner .lk.on { background: var(--accent2); }
+.dlike-corner .lk.on.bad { background: var(--danger); }
+.dlike-corner.ro { pointer-events: none; opacity: 0.85; }
+
+.dchat .cm.react.up { background: rgba(34, 211, 166, 0.16); }
+.dchat .cm.react.down { background: rgba(255, 93, 122, 0.16); }

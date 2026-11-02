@@ -55,7 +55,7 @@ async function api(method, url, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && token) logout();
+  if ((res.status === 401 || (res.status === 403 && /suspended/i.test(data.error || ''))) && token) { logout(); sessionStorage.setItem('qv_notice', data.error || ''); }
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
@@ -68,16 +68,19 @@ function setSession(data) {
 }
 
 function logout() {
+  const wasGuest = me && me.guest;
   token = null;
   me = null;
   localStorage.removeItem('qv_token');
   localStorage.removeItem('qv_user');
-  location.hash = '#/login';
+  location.hash = wasGuest ? '#/skribbl' : '#/login';
 }
 
 function renderNav() {
-  navEl.innerHTML = `<a class="brand" href="#/">Quiz<span>verse</span></a>` + (me
-    ? `<a href="#/">Home</a><a href="#/quizzes">Quizzes</a><a href="#/new-room">New tournament</a><a href="#/locker">Locker</a><a href="#/stats">Analytics</a>
+  navEl.innerHTML = `<a class="brand" href="#/">Quiz<span>verse</span></a>` + (me && me.guest
+    ? `<a href="#/">Home</a><span class="muted small">${esc(me.username)} (guest)</span><a href="#" id="logout">Leave</a>`
+    : me
+    ? `<a href="#/">Home</a><a href="#/quizzes">Quizzes</a><a href="#/new-room">New tournament</a><a href="#/locker">Locker</a><a href="#/stats">Analytics</a>${me.isAdmin ? '<a href="#/admin">Admin</a>' : ''}
        <span class="muted small">${esc(me.username)}</span><a href="#" id="logout">Log out</a>`
     : '') + `<a href="#" id="snd" title="Sound for videos">${soundOn ? '🔊' : '🔇'}</a>`;
   const l = $('#logout');
@@ -97,14 +100,23 @@ async function route() {
   const hv = document.getElementById('herovid');
   if (hv) hv.remove();
   const [, page = '', arg] = location.hash.slice(1).split('/');
-  if (!token && page !== 'login') {
+  document.body.classList.remove('skr', 'draw-live');
+  if (!token && !['login', 'skribbl', 'play'].includes(page)) {
     if (page === 'join') sessionStorage.setItem('qv_next', location.hash);
     location.hash = '#/login';
     return;
   }
+  if (me && me.guest && !['', 'room', 'play', 'customize'].includes(page)) { location.hash = '#/'; return; } // guests only have the Skribbl side
   renderNav();
+  track(page);
+  refreshMe();
   try {
     if (page === 'login') return viewLogin();
+    if (page === 'skribbl') return me ? (location.hash = '#/') : await viewSkribbl();
+    if (page === 'play') return await viewPlay(arg);
+    if (page === 'customize') return await viewCustomize();
+    if (me && me.guest && page === '') return await viewGuestHome();
+    if (page === 'admin') return await viewAdmin(arg);
     if (page === 'quizzes') return await viewQuizzes();
     if (page === 'locker') return await viewLocker();
     if (page === 'stats') return await viewStats();
@@ -119,6 +131,32 @@ async function route() {
 }
 window.addEventListener('hashchange', route);
 
+/* anonymous page-view counter for the admin's analytics (no cookies; random id kept in this browser) */
+function track(page) {
+  try {
+    let vid = localStorage.getItem('qv_vid');
+    if (!vid) { vid = crypto.randomUUID(); localStorage.setItem('qv_vid', vid); }
+    fetch('/api/track', {
+      method: 'POST', keepalive: true,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: JSON.stringify({ vid, page: page || 'home', ref: document.referrer || '' }),
+    }).catch(() => {});
+  } catch { /* tracking must never break the app */ }
+}
+
+// admin rights are decided by the server; keep the Admin link in step if they change while someone is logged in
+let meChecked = 0;
+function refreshMe() {
+  if (!token || Date.now() - meChecked < 60000) return;
+  meChecked = Date.now();
+  api('GET', '/me').then((d) => {
+    if (!me || d.user.isAdmin === !!me.isAdmin) return;
+    me = { ...me, ...d.user };
+    localStorage.setItem('qv_user', JSON.stringify(me));
+    renderNav();
+  }).catch(() => {});
+}
+
 /* ---------------- login / register ---------------- */
 function viewLogin() {
   renderNav();
@@ -126,30 +164,48 @@ function viewLogin() {
     document.body.insertAdjacentHTML('afterbegin', `<div id="herovid">${videoHtml('hero', true, 'herovid')}</div>`);
     mountVideos();
   }
-  app.innerHTML = `<div class="card auth"><h2>Welcome to Quizverse</h2>
+  app.innerHTML = `${authTabs('login')}<div class="card auth"><h2>Welcome to Quizverse</h2>
     <p class="muted">Create quizzes, host tournaments, challenge friends or the bot.</p>
-    <label>Username</label><input id="u" autocomplete="username">
+    <div class="err" id="notice">${esc(sessionStorage.getItem('qv_notice') || '')}</div>
+    <label id="ul">Username or email</label><input id="u" autocomplete="username">
+    <div id="emailrow" style="display:none"><label>Email</label><input id="e" type="email" autocomplete="email" placeholder="you@example.com"></div>
     <label>Password</label><input id="p" type="password" autocomplete="current-password">
     <div class="err" id="err"></div>
     <div class="row"><button id="login">Log in</button><button class="ghost" id="reg">Create account</button></div></div>`;
+  sessionStorage.removeItem('qv_notice');
+  let creating = false;
   const go = async (kind) => {
     try {
-      setSession(await api('POST', '/auth/' + kind, { username: $('#u').value, password: $('#p').value }));
+      const body = { username: $('#u').value, password: $('#p').value };
+      if (kind === 'register') body.email = $('#e').value;
+      setSession(await api('POST', '/auth/' + kind, body));
       const next = sessionStorage.getItem('qv_next');
       sessionStorage.removeItem('qv_next');
       location.hash = next || '#/';
     } catch (e) { $('#err').textContent = e.message; }
   };
   $('#login').onclick = () => go('login');
-  $('#reg').onclick = () => go('register');
-  $('#p').onkeydown = (e) => { if (e.key === 'Enter') go('login'); };
+  $('#reg').onclick = () => {
+    if (!creating) { // first click opens the sign-up form (adds the email box), second click creates the account
+      creating = true;
+      $('#emailrow').style.display = '';
+      $('#ul').textContent = 'Username';
+      $('#p').autocomplete = 'new-password';
+      $('#err').textContent = 'Choose a username, enter your email and a password, then press Create account.';
+      $('#login').textContent = 'Back to log in';
+      $('#login').onclick = () => { creating = false; viewLogin(); };
+      return;
+    }
+    go('register');
+  };
+  $('#p').onkeydown = (e) => { if (e.key === 'Enter') go(creating ? 'register' : 'login'); };
 }
 
 /* ---------------- home ---------------- */
 async function viewHome() {
   const [rooms, profile] = await Promise.all([api('GET', '/rooms/mine'), api('GET', '/profile').catch(() => null)]);
   app.innerHTML = `
-    <div class="card"><div class="row">${charHtml({ skin: profile ? profile.skin : 'rookie' }, 'lg', 'a-idle')}<div><h2 style="margin:0">Hi ${esc(me.username)} 👋</h2>${profile ? `<div class="muted small">Level ${profile.level} · ${profile.xp} XP · <a href="#/locker">Change character</a></div>` : ''}</div></div><div style="height:12px"></div>
+    <div class="card"><div class="row">${charHtml({ skin: profile ? profile.skin : 'rookie', look: profile && profile.look }, 'lg', 'a-idle')}<div><h2 style="margin:0">Hi ${esc(me.username)} 👋</h2>${profile ? `<div class="muted small">Level ${profile.level} · ${profile.xp} XP · <a href="#/locker">Change character</a></div>` : ''}</div></div><div style="height:12px"></div>
       <div class="row"><a class="btn" href="#/new-room">Host a tournament</a><a class="btn ghost" href="#/quiz/new">Create a quiz</a></div></div>
     <div class="card"><h3>Join with an invite code</h3>
       <div class="row"><input class="grow" id="code" placeholder="Code or invite link, e.g. K7P2QX" maxlength="120"><button id="join">Join</button></div></div>
@@ -312,7 +368,7 @@ async function viewLocker() {
   const p = await api('GET', '/profile');
   const cur = skinInfo(p.skin);
   const pct = Math.max(0, Math.min(100, Math.round(((p.xp - p.levelXp) / (p.nextXp - p.levelXp)) * 100)));
-  app.innerHTML = `<div class="card"><div class="row">${charHtml({ skin: p.skin }, 'xl', 'a-idle')}
+  app.innerHTML = `<div class="card"><div class="row">${charHtml({ skin: p.skin, look: p.look }, 'xl', 'a-idle')}
     <div class="grow"><h2 style="margin:0">${esc(me.username)}</h2><div class="muted">${esc(cur.name)} · Level ${p.level}</div>
     <div class="xpbar"><div style="width:${pct}%"></div></div>
     <div class="muted small">${p.xp} XP · ${p.nextXp - p.xp} XP to level ${p.level + 1}</div>
@@ -320,12 +376,13 @@ async function viewLocker() {
     <div class="card"><h3>Characters</h3>
     <p class="muted small">Your chosen character shows up in tournaments and animates on the VS screen, during matches and when you win. Earn XP by playing and winning matches, and unlock more by levelling up and winning tournaments. Rooms where you are the only human (the rest bots) give practice XP only.</p>
     <div class="skin-grid">${p.skins.map((s) => `<div class="skin ${s.unlocked ? '' : 'locked'} ${s.id === p.skin ? 'on' : ''}">
-      <div class="skin-art">${charHtml({ skin: s.id }, 'lg', s.unlocked ? 'a-hover' : '')}${s.unlocked ? '' : '<span class="lock">🔒</span>'}</div>
+      <div class="skin-art">${charHtml({ skin: s.id, look: s.id === 'custom' ? p.look : null }, 'lg', s.unlocked ? 'a-hover' : '')}${s.unlocked ? '' : '<span class="lock">🔒</span>'}</div>
       <b>${esc(s.name)}</b>
       <div class="muted small">${s.unlocked ? (s.free ? 'Free' : 'Unlocked') : `${esc(s.requirement)} (${s.have}/${s.need})`}</div>
-      ${s.unlocked ? `<button data-skin="${s.id}" ${s.id === p.skin ? 'disabled' : ''}>${s.id === p.skin ? 'Selected' : 'Select'}</button>` : ''}</div>`).join('')}</div></div>`;
+      ${s.id === 'custom' ? `<button data-customize>${p.look ? '✏️ Edit' : '✨ Create'}</button>${p.look && s.id !== p.skin ? `<button class="ghost" data-skin="custom">Select</button>` : ''}` : s.unlocked ? `<button data-skin="${s.id}" ${s.id === p.skin ? 'disabled' : ''}>${s.id === p.skin ? 'Selected' : 'Select'}</button>` : ''}</div>`).join('')}</div></div>`;
   mountVideos();
   app.onclick = async (e) => {
+    if (e.target.closest('[data-customize]')) { location.hash = '#/customize'; return; }
     const b = e.target.closest('[data-skin]');
     if (!b) return;
     try { await api('POST', '/profile/skin', { skin: b.dataset.skin }); toast('Character selected', true); viewLocker(); }
@@ -401,10 +458,10 @@ async function viewStats() {
 async function viewNewRoom(quizId) {
   const quizzes = (await api('GET', '/quizzes')).filter((q) => q.question_count > 0);
   app.innerHTML = `<div class="card"><h2>Host a tournament</h2>
-    <label>Game type</label><select id="gtype" style="max-width:320px"><option value="quiz">🧠 Quiz tournament</option><option value="typerace">⌨️ Typing race tournament</option></select>
+    <label>Game type</label><select id="gtype" style="max-width:320px"><option value="quiz">🧠 Quiz tournament</option><option value="typerace">⌨️ Typing race tournament</option><option value="draw">🎨 Draw & Guess (skribbl)</option></select>
     <div id="quizwrap"><label>Quiz</label>${quizzes.length ? `<select id="quiz">${quizzes.map((q) => `<option value="${q.id}" ${String(q.id) === quizId ? 'selected' : ''}>${esc(q.title)} (${q.question_count} Q${q.category ? ' · ' + esc(q.category) : ''})</option>`).join('')}</select>` : '<p class="muted">You need a quiz first. <a href="#/quiz/new">Create one</a> or pick the typing race.</p>'}</div>
-    <div id="lenwrap" style="display:none"><label>Text length</label><select id="tlen" style="max-width:200px"><option value="short">Short</option><option value="medium" selected>Medium</option><option value="long">Long</option></select>
-      <p class="muted small">Both players type the same text. First to finish it without mistakes wins the race; if time runs out, whoever typed further wins.</p></div>
+    <div id="lenwrap" style="display:none"><label id="tlenlabel">Text length</label><select id="tlen" style="max-width:200px"><option value="short">Short</option><option value="medium" selected>Medium</option><option value="long">Long</option></select>
+      <p class="muted small" id="lenhelp">Both players type the same text. First to finish it without mistakes wins the race; if time runs out, whoever typed further wins.</p></div>
     <label>Room name (optional)</label><input id="name" maxlength="80">
     <label>Player limit (including you, 2 to 50)</label><input id="max" type="number" min="2" max="50" value="8" style="max-width:140px">
     <label id="ppmlabel">Questions per match (head-to-head duel, 1 to 9)</label><input id="ppm" type="number" min="1" max="9" value="3" style="max-width:140px">
@@ -416,11 +473,16 @@ async function viewNewRoom(quizId) {
   const showDiff = () => ($('#diffwrap').style.display = $('#fill').checked || Number($('#bots').value) > 0 ? 'block' : 'none');
   $('#bots').oninput = $('#fill').onchange = showDiff;
   $('#gtype').onchange = () => {
-    const typing = $('#gtype').value === 'typerace';
-    $('#quizwrap').style.display = typing ? 'none' : 'block';
-    $('#lenwrap').style.display = typing ? 'block' : 'none';
-    $('#ppmlabel').textContent = typing ? 'Races per match (best of, 1 to 9)' : 'Questions per match (head-to-head duel, 1 to 9)';
-    $('#ppm').value = typing ? 1 : 3;
+    const kind = $('#gtype').value, typing = kind === 'typerace', drawing = kind === 'draw';
+    $('#quizwrap').style.display = typing || drawing ? 'none' : 'block';
+    $('#lenwrap').style.display = typing || drawing ? 'block' : 'none';
+    $('#tlenlabel').textContent = drawing ? 'Drawing time' : 'Text length';
+    $('#tlen').innerHTML = drawing ? '<option value="short">60 seconds</option><option value="medium" selected>80 seconds</option><option value="long">110 seconds</option>'
+      : '<option value="short">Short</option><option value="medium" selected>Medium</option><option value="long">Long</option>';
+    $('#lenhelp').textContent = drawing ? 'Everybody takes turns drawing a secret word while the others guess it in the chat. Faster guesses score more. No bracket: the highest score wins. Bots guess but never draw.'
+      : 'Both players type the same text. First to finish it without mistakes wins the race; if time runs out, whoever typed further wins.';
+    $('#ppmlabel').textContent = drawing ? 'Rounds (everyone draws once per round, 1 to 9)' : typing ? 'Races per match (best of, 1 to 9)' : 'Questions per match (head-to-head duel, 1 to 9)';
+    $('#ppm').value = drawing ? 3 : typing ? 1 : 3;
   };
   $('#create').onclick = async () => {
     try {
@@ -452,7 +514,7 @@ let R = null;
 
 function cleanupRoom() {
   if (sock) { sock.disconnect(); sock = null; }
-  if (R) { clearInterval(R.tick); clearTimeout(R.animT); clearTimeout(R.holdT); }
+  if (R) { clearInterval(R.tick); clearInterval(R.dtick); clearTimeout(R.animT); clearTimeout(R.holdT); }
   document.querySelectorAll('.fly').forEach((e) => e.remove());
   R = null;
   app.oninput = app.onchange = app.onclick = app.onpaste = null;
@@ -463,6 +525,8 @@ const nm = (id) => (id != null && R.pl[id] ? R.pl[id].name : '?');
 const skinInfo = (id) => SKINS.find((s) => s.id === id) || { id: id || 'rookie', name: 'Rookie', emoji: '🙂', c1: '#7c5cff', c2: '#4da3ff' };
 // The picture of a character: a Flow image if one was added, otherwise an emoji in a coloured bubble
 function charArt(p) {
+  if (p && doodleOnly()) return lookArt(p.look || seededLook(p.name), p.full); // Skribbl and Draw & Guess: only the 2D Custom Doodle
+  if (p && p.skin === 'custom' && p.look) return lookArt(p.look, p.full); // the Custom Doodle (customize.js)
   if (p && p.isBot && !p.skin) {
     const src = botAvatar(p.name);
     return src ? `<img class="ch-img" src="${src}" alt="">` : '<span class="ch-emoji" style="--c1:#ffb84d;--c2:#ff8a4d">🤖</span>';
@@ -477,6 +541,7 @@ function charArt(p) {
 const ANIM_ACTION = { 'a-enterL': ['enter', 'idle'], 'a-enterR': ['enter', 'idle'], 'a-idle': ['idle'], 'a-dance': ['win'], 'a-champion': ['champion', 'win'], 'a-sad': ['lose'], 'a-hop': ['correct'] };
 const LOOPING = new Set(['idle', 'ready', 'typing']);
 function clipFor(p, size, anim) {
+  if (doodleOnly()) return null; // doodles are still pictures
   const have_ = p && p.skin && (size === 'lg' || size === 'xl' || size === 'full') && have.clips[p.skin];
   const action = have_ && (ANIM_ACTION[anim] || []).find((a) => have_.includes(a));
   const still = action && have.posters[p.skin] && have.posters[p.skin][action];
@@ -725,11 +790,16 @@ function viewRoom(code) {
   R = { code, lobby: null, phase: 'wait', bracket: null, pl: {}, ms: {}, focus: null, tab: 'live', holdBracket: false, feed: [], hide: new Set(), cutting: new Map(), matchesSeen: false };
   app.innerHTML = '<p class="muted">Connecting…</p>';
   sock = io({ auth: { token } });
-  sock.on('connect_error', () => toast('Connection problem, retrying…'));
+  sock.on('connect_error', (err) => {
+    if (err && err.message === 'suspended') { sock.close(); logout(); sessionStorage.setItem('qv_notice', 'This account is suspended'); return; }
+    toast('Connection problem, retrying…');
+  });
+  sock.on('room:closed', () => { toast('This tournament was closed by an admin'); location.hash = '#/'; });
   sock.on('connect', () => sock.emit('room:join', code, (res) => {
     if (!res.ok) { toast(res.error); location.hash = '#/'; }
   }));
   R.tick = setInterval(tickNow, 100);
+  wireDraw();
   api('GET', '/profile').then((p) => { if (R) { R.profile = p; drawRoom(); } }).catch(() => {});
 
   app.onclick = (e) => {
@@ -862,6 +932,7 @@ function viewRoom(code) {
     setTimeout(() => flyWinner(m), 1700);
   });
   sock.on('game:end', (p) => {
+    for (const s of p.board) if (!R.pl[s.id]) R.pl[s.id] = { name: s.name, isBot: s.isBot, skin: s.skin, look: s.look }; // opened after the game: no live player data yet
     R.phase = 'end'; R.board = p.board; R.rewards = p.rewards || {}; R.hide = new Set(); R.cutting = new Map();
     if (p.rounds) R.bracket = p.rounds;
     drawRoom();
@@ -898,18 +969,21 @@ function drawRoom() {
   const L = R.lobby;
   const isHost = L.hostId === me.id;
   const mine = myPlayer();
+  document.body.classList.toggle('skr', L.gameType === 'draw');
+  document.body.classList.toggle('draw-live', R.phase === 'draw'); // the drawing game uses the whole window
+  if (R.phase === 'draw') return drawDrawUI();
   if (R.phase === 'play') return refresh('both');
   if (R.phase === 'end') {
     const board = R.board || [];
     const champ = board[0];
     const rw = R.rewards && mine && R.rewards[mine.id];
     const rewardHtml = rw ? `<div class="card reward"><h3>⭐ +${rw.xp} XP${rw.practice ? ' (practice room: a quarter of the XP, no win credit)' : ''} · Level ${rw.level}</h3>${rw.newSkins.length ? `<p>🎉 New character${rw.newSkins.length > 1 ? 's' : ''} unlocked: ${rw.newSkins.map((id) => `<b>${esc(skinInfo(id).name)}</b>`).join(', ')}! <a href="#/locker">Open your locker</a></p>` : ''}</div>` : '';
-    app.innerHTML = `<div class="card champion stage">${videoHtml('champion', false)}${champ ? charOf(champ.id, 'xl', 'a-champion') : ''}<div style="font-size:48px">🏆</div><h2>${champ ? esc(champ.name) : '?'} is the champion!</h2></div>
+    app.innerHTML = `${L.gameType === 'draw' ? podiumHtml(board, mine && mine.id) : `<div class="card champion stage">${videoHtml('champion', false)}${champ ? charOf(champ.id, 'xl', 'a-champion') : ''}<div style="font-size:48px">🏆</div><h2>${champ ? esc(champ.name) : '?'} is the champion!</h2></div>`}
       ${rewardHtml}
       ${R.bracket ? `<div class="card"><h3>Final bracket</h3>${bracketHtml(R.bracket)}</div>` : ''}
-      <div class="card"><h3>Standings</h3>${board.map((s) => `<div class="player ${mine && s.id === mine.id ? 'me' : ''}">
+      <div class="card">${L.gameType === 'draw' ? '' : '<h3>Standings</h3>'}${(L.gameType === 'draw' ? [] : board).map((s) => `<div class="player ${mine && s.id === mine.id ? 'me' : ''}">
         <span>${charOf(s.id, 'sm')}${esc(s.name)}${s.isBot ? '<span class="tag bot">BOT</span>' : ''} <span class="muted small">${placeLabel(s.placement)}</span></span><span class="score">${s.score} pts</span></div>`).join('')}
-      <div class="row" style="margin-top:14px"><a class="btn" href="#/">Home</a><a class="btn ghost" href="#/stats">📊 My analytics</a>${isHost ? '<a class="btn green" href="#/new-room">Host another</a>' : ''}</div></div>`;
+      <div class="row" style="margin-top:14px"><a class="btn" href="#/">Home</a>${me.guest ? '' : '<a class="btn ghost" href="#/stats">📊 My analytics</a>'}${isHost && !me.guest ? '<a class="btn green" href="#/new-room">Host another</a>' : ''}</div></div>`;
     mountVideos();
     return;
   }
@@ -917,33 +991,34 @@ function drawRoom() {
 }
 
 function drawLobby(L, isHost) {
-  const link = `${location.origin}/join/${L.inviteToken}`;
+  const link = `${location.origin}/${L.gameType === 'draw' ? 'play' : 'join'}/${L.inviteToken}`;
   const full = L.players.length >= L.maxPlayers && !L.botCount;
   const typing = L.gameType === 'typerace';
+  const drawing = L.gameType === 'draw';
   let size = 2;
   while (size < L.players.length) size *= 2;
   const rounds = Math.log2(size);
   app.innerHTML = `
     <div class="card"><div class="row between"><div><h2 style="margin:0">${esc(L.name)}</h2>
-      <div class="muted small">${typing ? `⌨️ Typing race · ${L.textLength} texts` : `${esc(L.quizTitle)} · ${L.questionCount} questions`} · host ${esc(L.hostName)}</div></div>
+      <div class="muted small">${drawing ? `🎨 Draw & Guess · ${L.questionsPerMatch} round${L.questionsPerMatch === 1 ? '' : 's'} · ${({ short: 60, medium: 80, long: 110 })[L.textLength] || 80}s per drawing` : typing ? `⌨️ Typing race · ${L.textLength} texts` : `${esc(L.quizTitle)} · ${L.questionCount} questions`} · host ${esc(L.hostName)}</div></div>
       <div style="text-align:right"><div class="muted small">Room code</div><div class="code">${L.code}</div></div></div></div>
     ${L.status === 'finished' ? '<div class="card"><p>This tournament has finished.</p><a class="btn" href="#/">Home</a></div>' : `
     <div class="card"><h3>Invite players</h3>
       <div class="invite"><input id="link" readonly value="${esc(link)}"><button id="copy">Copy link</button></div>
-      <p class="muted small">Anyone with this link can join (after logging in) until the room is full or the tournament starts.</p></div>
+      <p class="muted small">${drawing ? 'Anyone with this link can join with just a name until the room is full or the game starts.' : 'Anyone with this link can join (after logging in) until the room is full or the tournament starts.'}</p></div>
     <div class="card"><div class="row between"><h3>Players (${L.players.length}/${L.maxPlayers})</h3>${full ? '<span class="pill playing">Room full</span>' : ''}</div>
       ${L.players.map((p) => `<div class="player ${p.userId === me.id ? 'me' : ''}"><span>${charHtml(p, 'sm', 'a-idle')}${esc(p.name)}${p.isHost ? '<span class="tag">HOST</span>' : ''}${p.isBot ? '<span class="tag bot">BOT</span>' : ''}</span></div>`).join('')}
-      <p class="muted small">Knockout format: players are drawn at random into a bracket and play head-to-head. ${L.players.length >= 2 ? `With ${L.players.length} players that is ${rounds} round${rounds > 1 ? 's' : ''}${size > L.players.length ? ` (${size - L.players.length} player${size - L.players.length > 1 ? 's' : ''} get a bye in round 1)` : ''}.` : ''}</p></div>
-    ${R.profile ? `<div class="card"><div class="row between"><div class="row">${charHtml({ skin: R.profile.skin }, 'md', 'a-idle')}<div><b>Your character</b><div class="muted small">Level ${R.profile.level} · ${R.profile.xp} XP</div></div></div>
-      <div class="row"><select id="myskin">${R.profile.skins.filter((k) => k.unlocked).map((k) => `<option value="${k.id}" ${k.id === R.profile.skin ? 'selected' : ''}>${k.emoji} ${esc(k.name)}</option>`).join('')}</select><a class="btn ghost" href="#/locker">Locker</a></div></div></div>` : ''}
+      <p class="muted small">${drawing ? 'Free-for-all: in every round each player draws once while the others guess. Bots guess but never draw. Highest score wins.' : 'Knockout format: players are drawn at random into a bracket and play head-to-head.'} ${!drawing && L.players.length >= 2 ? `With ${L.players.length} players that is ${rounds} round${rounds > 1 ? 's' : ''}${size > L.players.length ? ` (${size - L.players.length} player${size - L.players.length > 1 ? 's' : ''} get a bye in round 1)` : ''}.` : ''}</p></div>
+    ${R.profile ? `<div class="card"><div class="row between"><div class="row">${charHtml({ skin: R.profile.skin, look: R.profile.look, name: me.username }, 'md', 'a-idle')}<div><b>${drawing ? 'Your doodle' : 'Your character'}</b><div class="muted small">${R.profile.guest ? 'Guest: just for fun, no XP' : `Level ${R.profile.level} · ${R.profile.xp} XP`}</div></div></div>
+      <div class="row">${drawing ? '' : `<select id="myskin">${R.profile.skins.filter((k) => k.unlocked).map((k) => `<option value="${k.id}" ${k.id === R.profile.skin ? 'selected' : ''}>${k.emoji} ${esc(k.name)}</option>`).join('')}</select>`}${R.profile.guest || drawing ? '<a class="btn ghost" href="#/customize">🎭 Customize your doodle</a>' : '<a class="btn ghost" href="#/locker">Locker</a>'}</div></div></div>` : ''}
     ${isHost ? `<div class="card"><h3>Host settings</h3><div class="row">
       <div><label>Player limit</label><input id="max" type="number" min="2" max="50" value="${L.maxPlayers}" style="width:110px"></div>
-      <div><label>${typing ? 'Races per match' : 'Questions per match'}</label><input id="ppm" type="number" min="1" max="9" value="${L.questionsPerMatch}" style="width:110px"></div>
-      ${typing ? `<div><label>Text length</label><select id="tlen">${['short', 'medium', 'long'].map((d) => `<option value="${d}" ${L.textLength === d ? 'selected' : ''}>${d}</option>`).join('')}</select></div>` : ''}
+      <div><label>${drawing ? 'Rounds' : typing ? 'Races per match' : 'Questions per match'}</label><input id="ppm" type="number" min="1" max="9" value="${L.questionsPerMatch}" style="width:110px"></div>
+      ${typing || drawing ? `<div><label>${drawing ? 'Drawing time' : 'Text length'}</label><select id="tlen">${['short', 'medium', 'long'].map((d) => `<option value="${d}" ${L.textLength === d ? 'selected' : ''}>${drawing ? ({ short: '60 s', medium: '80 s', long: '110 s' })[d] : d}</option>`).join('')}</select></div>` : ''}
       <div><label>Bots</label><input id="bots" type="number" min="0" max="49" value="${L.botCount}" style="width:90px"></div>
       <div><button class="ghost" id="fill" style="margin-top:26px">Fill all slots with bots</button></div>
       <div><label>Bot difficulty</label><select id="diff" ${L.botCount > 0 ? '' : 'disabled'}>${['easy', 'medium', 'hard'].map((d) => `<option value="${d}" ${L.botDifficulty === d ? 'selected' : ''}>${d}</option>`).join('')}</select></div></div>
-      <div class="row" style="margin-top:16px"><button class="green" id="start" ${L.players.length < 2 ? 'disabled' : ''}>Start tournament</button>
+      <div class="row" style="margin-top:16px"><button class="green" id="start" ${L.players.length < 2 ? 'disabled' : ''}>${drawing ? 'Start game' : 'Start tournament'}</button>
       ${L.players.length < 2 ? '<span class="muted small">Invite a friend or add bots to start.</span>' : ''}</div></div>`
       : `<div class="card"><p class="muted">Waiting for the host to start…</p><button class="ghost" id="leave">Leave room</button></div>`}`}`;
   const patch = async () => {

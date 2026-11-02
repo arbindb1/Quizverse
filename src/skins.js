@@ -2,6 +2,7 @@
 // emoji + colours are the built-in look; a Flow picture at public/media/skins/<id>.png (or .jpg/.webp) replaces them, and clips in public/media/skins/<id>/<action>.mp4 replace the built-in motion.
 const SKINS = [
   { id: 'rookie', name: 'Rookie', emoji: '🙂', c1: '#7c5cff', c2: '#4da3ff', unlock: { type: 'free' } },
+  { id: 'custom', name: 'Custom Doodle', emoji: '🎭', c1: '#ffb84d', c2: '#ff5d7a', unlock: { type: 'free' } }, // built in the character editor, see look.js
   { id: 'sprout', name: 'Sprout', emoji: '🌱', c1: '#22d3a6', c2: '#7ee787', unlock: { type: 'free' } },
   { id: 'comet', name: 'Comet', emoji: '☄️', c1: '#ffb84d', c2: '#ff5d7a', unlock: { type: 'free' } },
   { id: 'ninja', name: 'Shadow Ninja', emoji: '🥷', c1: '#3a3f7a', c2: '#14172e', unlock: { type: 'level', n: 2 } },

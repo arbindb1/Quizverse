@@ -71,4 +71,22 @@ function buildStats({ quizRows = [], typingRows = [], summary = [] }) {
   return { quiz: { ...quizStats(quizRows), ...sum('quiz') }, typing: { ...typingStats(typingRows), ...sum('typerace') } };
 }
 
-module.exports = { buildStats, quizStats, typingStats };
+// Reads one player's saved answers and builds their analytics (bots are never counted)
+async function loadStats(db, uid) {
+  const [quizRows] = await db.query(
+    `SELECT a.room_id, a.is_correct, a.time_ms, a.created_at,
+            COALESCE(a.category, (SELECT c.name FROM questions q JOIN quizzes z ON z.id = q.quiz_id JOIN categories c ON c.id = z.category_id WHERE q.id = a.question_id)) AS category
+       FROM room_answers a JOIN room_players p ON p.id = a.player_id AND p.user_id = ?
+       JOIN rooms r ON r.id = a.room_id AND r.game_type = 'quiz' ORDER BY a.id`, [uid]);
+  const [typingRows] = await db.query(
+    `SELECT a.room_id, a.choice AS chars, a.is_correct AS finished, a.time_ms, a.created_at,
+            COALESCE(a.wpm, CASE WHEN a.is_correct = 1 AND a.time_ms > 0 THEN ROUND(a.choice / 5 / (a.time_ms / 60000)) END) AS wpm
+       FROM room_answers a JOIN room_players p ON p.id = a.player_id AND p.user_id = ?
+       JOIN rooms r ON r.id = a.room_id AND r.game_type = 'typerace' ORDER BY a.id`, [uid]);
+  const [summary] = await db.query(
+    `SELECT r.game_type, COUNT(*) AS tournaments, SUM(p.placement = 1) AS wins, SUM(p.matches_played) AS matches, SUM(p.matches_won) AS match_wins
+       FROM room_players p JOIN rooms r ON r.id = p.room_id WHERE p.user_id = ? AND r.status = 'finished' GROUP BY r.game_type`, [uid]);
+  return buildStats({ quizRows, typingRows, summary });
+}
+
+module.exports = { buildStats, quizStats, typingStats, loadStats };

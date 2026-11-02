@@ -114,7 +114,7 @@ Add these to the prompts so each character feels different.
 | Shadow Knight | stands still, cape ripples in the wind, eyes glint violet | steps out of dark mist with a heavy clank and the cape snaps open | raises a fist, cape swirls and purple light bursts from the armor | kneels, head bows, the eye glow dims and the cape settles |
 | Captain | parrot hops, beard sways | swings in on a rope and lands | laughs and spins, tosses a sparkling gold coin, parrot flaps | hat falls off, parrot covers its eyes |
 | Tiger Cub | tail swishes, ear twitches | pounces into frame | gives an adorable tiny roar with confetti and a spin | curls into a ball, ears down |
-| Dragon | tiny flame flickers, wings flutter | swoops in, lands with a thump and a small fire puff | breathes a ring of colorful sparks upward | smoke puff, wings droop, hiccups smoke |
+| Dragon | tiny flame flickers, wings flutter | sweeps a stream of fire along the ground, then beckons (face-off) | tall column of fire straight up like a firework | angry stomp, then a short sharp fire burst at the camera |
 | Phoenix | feathers shimmer, embers float | bursts in as a fireball that opens into the bird | rises with wings spread in a fiery aura | feathers dim to ash gray, curls up |
 | Legend | calm, hovering light, cape sways | a beam of light descends and the hero lands majestically | raises the trophy in a golden burst | kneels with dignity, aura dims |
 
