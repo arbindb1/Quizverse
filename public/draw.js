@@ -200,8 +200,7 @@ function buildDrawShell() {
     const d = R.d;
     if (b.dataset.dc === 'color') { d.color = b.dataset.v; if (d.tool === 'eraser') d.tool = 'pen'; }
     else if (b.dataset.dc === 'size') d.size = Number(b.dataset.v);
-    else if (b.dataset.dc === 'eraser') d.tool = d.tool === 'eraser' ? 'pen' : 'eraser';
-    else if (b.dataset.dc === 'fill') d.tool = d.tool === 'fill' ? 'pen' : 'fill';
+    else if (['pen', 'fill', 'eraser'].includes(b.dataset.dc)) d.tool = b.dataset.dc; // one tool at a time: choosing one deselects the others
     else if (b.dataset.dc === 'undo') sock.emit('draw:undo');
     else if (b.dataset.dc === 'clear') sock.emit('draw:clear');
     drawTools();
@@ -291,8 +290,9 @@ function drawTools() {
   const t = $('#dtools'), s = R.d.s, d = R.d;
   if (!(amDrawer() && s.phase === 'drawing')) { t.innerHTML = amDrawer() ? '' : '<span class="muted small">Watch the drawing and type your guess in the chat →</span>'; return; }
   t.innerHTML = `${DRAW_COLORS.map((c) => `<button class="swatch ${d.tool !== 'eraser' && d.color === c ? 'on' : ''}" data-dc="color" data-v="${c}" style="background:${c}" aria-label="colour ${c}"></button>`).join('')}
+    <span class="sep"></span><button class="ghost tool ${d.tool === 'pen' ? 'on' : ''}" data-dc="pen" aria-pressed="${d.tool === 'pen'}" title="Pencil">✏️ Pencil</button><button class="ghost tool ${d.tool === 'fill' ? 'on' : ''}" data-dc="fill" aria-pressed="${d.tool === 'fill'}" title="Paint bucket">🪣 Bucket</button>
     <span class="sep"></span>${DRAW_SIZES.map((z) => `<button class="ghost sz ${d.size === z ? 'on' : ''}" data-dc="size" data-v="${z}"><i style="width:${z + 4}px;height:${z + 4}px"></i></button>`).join('')}
-    <button class="ghost ${d.tool === 'fill' ? 'on' : ''}" data-dc="fill">🪣 Fill</button><button class="ghost ${d.tool === 'eraser' ? 'on' : ''}" data-dc="eraser">🧽 Eraser</button><button class="ghost" data-dc="undo">↩ Undo</button><button class="ghost" data-dc="clear">🗑 Clear</button>`;
+    <button class="ghost tool ${d.tool === 'eraser' ? 'on' : ''}" data-dc="eraser" aria-pressed="${d.tool === 'eraser'}">🧽 Eraser</button><button class="ghost" data-dc="undo">↩ Undo</button><button class="ghost" data-dc="clear">🗑 Clear</button>`;
 }
 
 function drawChat() {

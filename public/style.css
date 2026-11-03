@@ -558,3 +558,6 @@ body.skr .player .char.sm .cstage { transform: translateY(3%) scale(1.3); transf
 
 .dchat .cm.react.up { background: rgba(34, 211, 166, 0.16); }
 .dchat .cm.react.down { background: rgba(255, 93, 122, 0.16); }
+
+/* Pencil and Bucket sit right after the colours: exactly one of them (or the eraser) is selected */
+.dtools button.tool.on { background: var(--accent); color: #fff; outline: 3px solid var(--accent2); }
