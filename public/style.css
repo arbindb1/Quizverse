@@ -299,7 +299,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 .podium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; margin-top: 18px; min-height: 300px; }
 .pod { width: 190px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
-.pod-who { text-align: center; margin-bottom: 8px; animation: podin 0.8s ease-out both; }
+.pod-who { text-align: center; margin-bottom: 8px; animation: podin 0.8s ease-out; }
 .pod-name { font-weight: 800; margin-top: 6px; word-break: break-word; }
 .pod-score { color: var(--accent2); font-weight: 700; }
 .crown { font-size: 34px; animation: podbob 1.6s ease-in-out infinite; }
@@ -561,3 +561,127 @@ body.skr .player .char.sm .cstage { transform: translateY(3%) scale(1.3); transf
 
 /* Pencil and Bucket sit right after the colours: exactly one of them (or the eraser) is selected */
 .dtools button.tool.on { background: var(--accent); color: #fff; outline: 3px solid var(--accent2); }
+
+/* ---------- skribbl.io look (2026-11-08): blue doodle wallpaper, white panels, dark settings card, green Start ---------- */
+body.skr { background: #1f3fc4; background-attachment: fixed; }
+body.skr::before { opacity: 1; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' fill='none' stroke='%2373a4ff' stroke-opacity='.55' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 40l18-18 10 10-18 18-14 4z'/%3E%3Ccircle cx='120' cy='34' r='14'/%3E%3Cpath d='M112 30h.1M128 30h.1M112 40q8 7 16 0'/%3E%3Cpath d='M180 20l8 16 17 2-12 12 3 17-16-8-15 8 3-17-12-12 17-2z'/%3E%3Cpath d='M30 120q10-24 20 0t20 0'/%3E%3Cpath d='M110 100h40v30h-40zM120 100v-8h20v8'/%3E%3Cpath d='M180 110c-14 0-14 22 0 22s14-22 0-22zM180 132v14'/%3E%3Cpath d='M40 180h30l-5 25h-20zM46 180l4-10h10l4 10'/%3E%3Cpath d='M120 170q15-25 30 0'/%3E%3Cpath d='M190 175l15 15m0-15l-15 15'/%3E%3C/svg%3E"); background-size: 220px 220px; }
+body.skr .card { background: #fff; color: #1b2a5a; border-color: transparent; border-radius: 6px; backdrop-filter: none; box-shadow: 0 2px 0 rgba(0, 0, 40, 0.25); }
+body.skr nav, body.skr #nav { background: rgba(10, 25, 110, 0.85); }
+.skl-top { text-align: center; padding: 6px 0 14px; }
+.skl-logo { font-size: 64px; }
+.skl-main { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(360px, 1.5fr) minmax(220px, 1fr); gap: 14px; align-items: start; max-width: 1200px; margin: 0 auto; }
+.skl-card { background: #fff; color: #1b2a5a; border-radius: 6px; padding: 10px; box-shadow: 0 2px 0 rgba(0, 0, 40, 0.25); }
+.skl-set { background: rgba(12, 25, 100, 0.92); color: #fff; padding: 14px; }
+.skl-h { font-weight: 800; font-size: 18px; display: flex; justify-content: space-between; margin-bottom: 8px; }
+.skl-h.dark { justify-content: center; color: #fff; font-size: 22px; }
+.skl-p { display: flex; align-items: center; gap: 8px; padding: 4px 8px; min-height: 58px; border-radius: 4px; }
+.skl-p:nth-child(odd) { background: #eef2ff; }
+.skl-p.me .skl-n { color: #2a6cf0; }
+.skl-n { font-weight: 800; flex: 1; overflow-wrap: anywhere; }
+.skl-t { font-size: 12px; color: #6a76a8; font-weight: 700; }
+.skl-p .pa .char, .skl-p .pa .char.sm { --s: 50px; margin: 0; }
+.skl-full { text-align: center; font-weight: 800; color: #e0446a; margin-top: 8px; }
+.sgrid { display: grid; gap: 8px; }
+.srow { display: grid; grid-template-columns: 1fr 140px; align-items: center; gap: 10px; }
+.srow label { margin: 0; color: #fff; font-weight: 700; font-size: 15px; }
+.srow select { width: 100%; background: #fff; color: #1b2a5a; border: 0; border-radius: 4px; padding: 8px; font-weight: 700; }
+.srow .sval { text-align: center; background: rgba(255, 255, 255, 0.14); border-radius: 4px; padding: 8px; }
+.skl-cw { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.skl-cw textarea { width: 100%; background: #fff; color: #1b2a5a; border: 0; border-radius: 4px; resize: vertical; font: inherit; padding: 8px; }
+.skl-chk { display: flex; gap: 8px; align-items: center; margin: 0; color: #fff; font-weight: 700; }
+.skl-chk input { width: 18px; height: 18px; }
+.skl-act { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 14px; align-items: center; }
+.skl-start { grid-column: 1 / -1; font-size: 30px; font-weight: 900; padding: 14px; border-radius: 6px; background: #4cd451; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); box-shadow: 0 4px 0 #29922d; }
+.skl-start:disabled { opacity: 0.55; box-shadow: none; }
+.skl-start:not(:disabled):active { transform: translateY(3px); box-shadow: 0 1px 0 #29922d; }
+.skl-wait { grid-column: 1 / -1; text-align: center; font-weight: 800; padding: 12px; background: rgba(255, 255, 255, 0.14); border-radius: 6px; }
+.skl-copy { background: #3c7bff; color: #fff; font-weight: 800; border-radius: 6px; padding: 10px 14px; box-shadow: 0 3px 0 #2457c9; }
+.skl-link { background: #fff; color: #1b2a5a; border: 0; border-radius: 4px; padding: 10px; min-width: 0; font-size: 13px; }
+.skl-hint { text-align: center; color: #cfe0ff; font-size: 13px; margin-top: 8px; }
+.skl-fill { background: transparent; color: #cfe0ff; text-decoration: underline; padding: 0; }
+.skl-me { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 6px 0 10px; }
+.skl-me .char { --s: 110px; }
+.skl-edit { display: block; text-align: center; margin-bottom: 12px; background: #3c7bff; color: #fff; }
+.skl-rules { display: flex; flex-direction: column; gap: 6px; font-size: 13px; background: #eef2ff; border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+@media (max-width: 900px) { .skl-main { grid-template-columns: 1fr; } .skl-logo { font-size: 44px; } }
+
+/* in the game: white panels, orange system messages, dark text */
+body.skr .draw-top { background: #fff; }
+body.skr .draw-top .muted, body.skr .dwho { color: #4a5a99; }
+body.skr .dtimer { background: #eef2ff; color: #1b2a5a; border-radius: 20px; padding: 2px 12px; min-width: 76px; text-align: center; }
+body.skr .dtimer.low { color: #e0243b; }
+body.skr .dhint, body.skr .dhint * { color: #1b2a5a; }
+body.skr .draw-players .player, body.skr .draw-players .player * { color: #1b2a5a; }
+body.skr .draw-players .player:nth-child(odd) { background: #eef2ff; }
+body.skr .draw-players .player .rk, body.skr .draw-players .player .pst, body.skr .draw-players .player .psub { color: #6a76a8; }
+body.skr .draw-players .player.me .pnm { color: #2a6cf0; }
+body.skr .draw-players .player.guessed { background: #c6f6c8; }
+body.skr .draw-chat .dchat, body.skr .draw-chat .dchat * { color: #1b2a5a; }
+body.skr .dchat .cm:nth-child(even) { background: #eef2ff; }
+body.skr .dchat .cm.ok { background: transparent; color: #12a225; font-weight: 800; }
+body.skr .dchat .cm.ok * { color: #12a225; }
+body.skr .dchat .cm.warn, body.skr .dchat .cm.warn * { color: #e0791a; background: transparent; font-weight: 800; }
+body.skr .draw-chat input { background: #fff; color: #1b2a5a; border: 2px solid #c9d4ff; }
+body.skr .draw-chat input::placeholder { color: #8a96c4; }
+body.skr .dtools { background: #fff; border-radius: 6px; padding: 6px; }
+body.skr .dtools button.ghost { color: #1b2a5a; background: #eef2ff; }
+body.skr .dtools button.tool.on { background: #3c7bff; color: #fff; outline: 3px solid #9ec0ff; }
+body.skr .draw-players .player { background: #fff; border-color: transparent; }
+body.skr .draw-players .player:nth-child(even) { background: #fff; }
+body.skr .draw-players .player.me { box-shadow: inset 0 0 0 2px #9ec0ff; }
+body.skr .draw-players .player.drawing { box-shadow: inset 0 0 0 2px #ffb84d; }
+body.skr .draw-players .player.guessed { background: #c6f6c8; }
+body.skr .draw-players h3, body.skr .draw-players .muted { color: #1b2a5a; }
+
+/* all players always visible: the row height comes from fitPlayers() (--prow), two columns when there are many */
+body.draw-live .draw-players .player { height: var(--prow, 80px); }
+body.draw-live .draw-players .player .pa .char, body.draw-live.skr .draw-players .player .pa .char.sm { --s: min(62px, calc(var(--prow, 74px) - 12px)); }
+body.draw-live .draw-players .player .pnm { -webkit-line-clamp: 2; font-size: clamp(12px, calc(var(--prow, 80px) * 0.2), 16px); }
+body.draw-live .draw-players .player .psub { height: auto; }
+body.draw-live .draw-players.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6px; align-content: start; }
+body.draw-live .draw-players.cols2 > :not(.player) { grid-column: 1 / -1; }
+body.draw-live .draw-players.cols2 .player { grid-template-columns: calc(var(--prow, 40px) - 4px) minmax(0, 1fr) auto; gap: 4px; padding: 0 4px; }
+body.draw-live .draw-players.cols2 .player .psub { display: none; }
+body.draw-live .draw-players.cols2 .player { grid-template-columns: 34px minmax(0, 1fr) auto; }
+body.draw-live .draw-players.cols2 .player .pa .char, body.draw-live.skr .draw-players.cols2 .player .pa .char.sm { --s: 34px; }
+body.draw-live .draw-players.cols2 .player .pnm { -webkit-line-clamp: 2; font-size: 12px; }
+/* whoever guessed the word gets a fully green card for the rest of that turn (beats the striped rows) */
+body.skr .draw-players .player.guessed, body.skr .draw-players .player.guessed:nth-child(odd), body.skr .draw-players .player.guessed:nth-child(even) { background: #8ee58a; }
+body.skr .draw-players .player.guessed .pnm, body.skr .draw-players .player.guessed .psc b, body.skr .draw-players .player.guessed .rk { color: #0d4a12; }
+/* avatar column always matches the avatar size (beats the older window-size media rules) */
+body.draw-live .draw-players .player { --av: min(62px, calc(var(--prow, 74px) - 12px)); grid-template-columns: calc(var(--av) + 4px) minmax(0, 1fr) auto; }
+body.draw-live.skr .draw-players .player .pa .char.sm { --s: var(--av); }
+body.draw-live .draw-players.cols2 .player { --av: 34px; }
+
+/* picked animations (GIFs): sticker while drawing, podium sticker, picker in the waiting room */
+.danim { position: absolute; z-index: 4; pointer-events: none; display: none; }
+.danim img { display: block; width: 100%; border-radius: 12px; border: 4px solid #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); background: #fff; }
+.danim span { display: block; text-align: center; font-weight: 800; font-size: 13px; margin-top: 4px; color: #fff; text-shadow: 0 1px 3px #000; }
+.danim.pop { display: block; left: 50%; top: 50%; width: min(36%, 300px); transform: translate(-50%, -50%); animation: animpop 0.5s cubic-bezier(.2, 1.6, .4, 1); }
+.danim.corner { display: block; left: 10px; top: 10px; width: clamp(70px, 9%, 120px); transition: all 0.4s; }
+@keyframes animpop { from { transform: translate(-50%, -50%) scale(0.2) rotate(-12deg); opacity: 0; } to { transform: translate(-50%, -50%) scale(1) rotate(0); opacity: 1; } }
+.pod-anim { display: block; margin: 0 auto 4px; width: 84px; max-height: 84px; object-fit: cover; border-radius: 10px; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+.pod-anim.pod-lg { width: 112px; max-height: 112px; }
+.skl-anim { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; font-size: 13px; }
+.anim-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.anim-t { padding: 0; aspect-ratio: 1; border-radius: 8px; border: 3px solid transparent; background: #eef2ff; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.anim-t img { width: 100%; height: 100%; object-fit: cover; }
+.anim-t.on { border-color: #4cd451; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #4cd451; }
+.danim video { display: block; width: 100%; border-radius: 12px; border: 4px solid #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); background: #fff; }
+video.pod-anim { object-fit: cover; }
+.anim-t video { width: 100%; height: 100%; object-fit: cover; }
+.pod-anim { height: 84px; max-height: none; background: #eef2ff; }
+.pod-anim.pod-lg { height: 112px; }
+
+/* clips with a transparent background (webp/png) are shown without a frame */
+.danim img.tr { border: 0; background: none; box-shadow: none; }
+.pod-anim.tr { border: 0; background: none; box-shadow: none; object-fit: contain; width: auto; max-width: 120px; }
+.pod-anim.pod-lg.tr { max-width: 150px; }
+.anim-t img.tr { object-fit: contain; }
+.anim-grid { grid-template-columns: repeat(5, 1fr); }
+/* the drawer's clip covers the whole whiteboard when it pops up (then shrinks to the corner) */
+.danim.pop { left: 0; top: 0; width: 100%; height: 100%; transform: none; animation: animfull 0.45s ease-out; background: rgba(255, 255, 255, 0.92); }
+.danim.pop img, .danim.pop video { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; object-fit: cover; background: none; }
+.danim.pop img.tr { object-fit: contain; }
+.danim.pop span { position: absolute; left: 0; right: 0; bottom: 14px; font-size: clamp(18px, 3vw, 34px); margin: 0; }
+@keyframes animfull { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }

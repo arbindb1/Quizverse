@@ -8,7 +8,6 @@ const { ALL: FALLBACK_WORDS } = require('./drawwords'); // only used if the tabl
  * The drawing travels as small stroke segments (coordinates 0..1) that the server relays and keeps so that a
  * reconnecting player can see the picture so far. The secret word is only ever sent to the drawer.
  */
-const DRAW_SECONDS = { short: 60, medium: 80, long: 110 };
 const CHOOSE_MS = 15000;
 const REVEAL_MS = 5000;
 const BOT_GUESS_CHANCE = { easy: 0.35, medium: 0.6, hard: 0.85 };
@@ -41,21 +40,24 @@ async function start(state) {
     const [rows] = await db.query('SELECT word FROM draw_words');
     if (rows.length >= 30) words = rows.map((r) => r.word);
   } catch (e) { console.error('Could not read draw_words, using the built-in list', e.message); }
+  // the host's own words (skribbl: custom words are mixed in, or used alone with "use custom words only")
+  const mine = String(state.customWords || '').split(',').map((w) => w.trim()).filter(Boolean);
+  if (mine.length >= 1) words = state.customOnly ? (mine.length >= 3 ? mine : [...mine, ...words.slice(0, 3)]) : [...new Set([...words, ...mine, ...mine, ...mine])];
   const [[room]] = await db.query('SELECT id FROM rooms WHERE code = ?', [state.code]);
   await db.query("UPDATE rooms SET status='playing', started_at=NOW() WHERE id = ?", [room.id]);
   await db.query('UPDATE room_players SET score = 0, placement = NULL WHERE room_id = ?', [room.id]);
   await db.query("UPDATE room_players SET skin = 'rookie' WHERE room_id = ? AND is_bot = 1", [room.id]);
   const players = new Map(state.players.map((p) => [p.id, {
-    id: p.id, userId: p.userId, name: p.name, isBot: p.isBot, skin: p.isBot ? 'rookie' : p.skin || 'rookie', look: p.look || null, score: 0, mp: 0, mw: 0, placement: null,
+    id: p.id, userId: p.userId, name: p.name, isBot: p.isBot, skin: p.isBot ? 'rookie' : p.skin || 'rookie', look: p.look || null, drawAnim: p.drawAnim || null, winAnim: p.winAnim || null, score: 0, mp: 0, mw: 0, placement: null,
   }]));
   const humans = [...players.values()].filter((p) => !p.isBot);
   const g = {
     code: state.code, roomId: room.id, players, words, difficulty: state.botDifficulty,
-    rounds: state.questionsPerMatch, drawSeconds: DRAW_SECONDS[state.textLength] || 80,
+    rounds: state.questionsPerMatch, drawSeconds: state.drawTime || 80, wordCount: state.wordCount || 3, hintCount: state.hintCount === undefined ? 2 : state.hintCount,
     order: humans.map((p) => p.id).reverse(), round: 1, turn: -1, // like skribbl: the list keeps its join order, the drawer goes from the bottom up to the top
     phase: 'wait', drawerId: null, word: null, options: [], used: new Set(),
     guessed: new Map(), gains: {}, strokes: [], points: 0, endsAt: 0, hintMask: [], hintAt: [],
-    timers: [], chatAt: new Map(), emoteAt: new Map(), votes: new Map(), kickVotes: new Map(), hostId: state.hostId,
+    timers: [], chatAt: new Map(), votes: new Map(), kickVotes: new Map(), hostId: state.hostId,
     userPlayer: (uid) => [...players.values()].find((p) => p.userId === uid)?.id,
   };
   games.set(state.code, g);
@@ -64,7 +66,7 @@ async function start(state) {
   after(g, () => nextTurn(g), 2500);
 }
 
-const playersPayload = (g) => Object.fromEntries([...g.players.values()].map((p) => [p.id, { name: p.name, isBot: p.isBot, skin: p.skin, look: p.look }]));
+const playersPayload = (g) => Object.fromEntries([...g.players.values()].map((p) => [p.id, { name: p.name, isBot: p.isBot, skin: p.skin, look: p.look, drawAnim: p.drawAnim, winAnim: p.winAnim }]));
 const scores = (g) => Object.fromEntries([...g.players.values()].map((p) => [p.id, p.score]));
 const hintOf = (g) => (g.word ? [...g.word].map((ch, i) => (ch === ' ' ? ' ' : g.hintMask[i] ? ch : null)) : []);
 
@@ -95,12 +97,12 @@ function nextTurn(g) {
   g.points = 0;
   g.phase = 'choosing';
   const pool = g.words.filter((w) => !g.used.has(w));
-  g.options = pick(pool.length >= 3 ? pool : g.words, 3);
+  g.options = pick(pool.length >= g.wordCount ? pool : g.words, g.wordCount);
   g.endsAt = Date.now() + CHOOSE_MS;
   push(g);
   io.to(g.code).emit('draw:redraw', { strokes: [] });
   toUser(g, g.players.get(g.drawerId), 'draw:choices', { words: g.options });
-  after(g, () => chooseWord(g, g.options[0]), CHOOSE_MS);
+  after(g, () => chooseWord(g, g.options[Math.floor(Math.random() * g.options.length)]), CHOOSE_MS);
 }
 
 function chooseWord(g, word) {
@@ -111,13 +113,17 @@ function chooseWord(g, word) {
   g.phase = 'drawing';
   g.endsAt = Date.now() + g.drawSeconds * 1000;
   g.hintMask = [...word].map((ch) => ch === ' ');
+  g.hintSlots = 0; g.hintsFired = 0; // hint reveals planned for this word and how many have already happened (they lower a guess's score)
   push(g);
   toUser(g, g.players.get(g.drawerId), 'draw:word', { word });
-  // letters are revealed as time passes (one at 50% and one more at 75% of the time, only for words of 4+ letters)
+  // letters are revealed as time passes: the host's number of hints, spread evenly over the drawing time (words of 4+ letters)
   const letters = [...word].map((c, i) => i).filter((i) => word[i] !== ' ');
   if (letters.length >= 4) {
-    for (const f of [0.5, 0.75]) {
+    g.hintSlots = g.hintCount;
+    for (let k = 1; k <= g.hintCount; k++) {
+      const f = 0.25 + 0.6 * (g.hintCount === 1 ? 0.5 : (k - 1) / (g.hintCount - 1));
       after(g, () => {
+        g.hintsFired++;
         const hidden = letters.filter((i) => !g.hintMask[i]);
         if (g.phase !== 'drawing' || hidden.length <= 2) return;
         g.hintMask[hidden[Math.floor(Math.random() * hidden.length)]] = true;
@@ -133,11 +139,23 @@ function chooseWord(g, word) {
   after(g, () => endTurn(g), g.drawSeconds * 1000);
 }
 
+// Scoring copied from scribble.rs (an open-source skribbl clone), its "competitive" setting, because skribbl.io's own formula is not published:
+//   points = int(10 + 290 * (1 - 3 / drawSeconds) ^ secondsElapsed) + hintsLeft * floor(120 / hintSlots)
+// so a guess is worth most at the start and loses value every second, and every hint that is revealed before you guess takes away a share of 120.
+// The order of guessing does not matter. Maximum: 10 + 290 + 120 = 420.
+const SCORE = { base: 10, maxBonus: 290, decline: 3, maxHint: 120 };
+function guessScore(g) {
+  const secondsLeft = Math.floor(Math.max(0, g.endsAt - Date.now()) / 1000);
+  const elapsed = Math.min(g.drawSeconds, Math.max(0, g.drawSeconds - secondsLeft));
+  const factor = SCORE.decline / g.drawSeconds;
+  let pts = Math.floor(SCORE.base + SCORE.maxBonus * Math.pow(1 - factor, elapsed));
+  if (g.hintSlots > 0) pts += Math.max(0, g.hintSlots - g.hintsFired) * Math.floor(SCORE.maxHint / g.hintSlots);
+  return pts;
+}
+
 function correct(g, p) {
   if (g.phase !== 'drawing' || p.id === g.drawerId || g.guessed.has(p.id)) return;
-  const left = Math.max(0, g.endsAt - Date.now()) / (g.drawSeconds * 1000);
-  // like skribbl: more points the more time is left, and the first to guess earns the most (each earlier guesser takes 10% off, down to 55%)
-  const pts = Math.round((50 + 450 * left) * Math.max(0.55, 1 - 0.1 * g.guessed.size));
+  const pts = guessScore(g);
   g.guessed.set(p.id, pts);
   p.score += pts;
   g.gains[p.id] = pts;
@@ -153,7 +171,8 @@ function endTurn(g) {
   clear(g);
   const drawer = g.players.get(g.drawerId);
   const total = [...g.guessed.values()].reduce((a, b) => a + b, 0);
-  const gain = g.players.size > 1 ? Math.round(total / (g.players.size - 1)) : 0; // the drawer earns the average guesser's points
+  const others = g.players.size - 1; // everybody except the drawer counts, players who did not guess count as 0 (their drawing was not good enough)
+  const gain = others > 0 ? Math.floor(total / others) : 0; // the drawer earns the average of everybody's points this turn
   drawer.score += gain;
   g.gains[drawer.id] = (g.gains[drawer.id] || 0) + gain;
   g.phase = 'reveal';
@@ -266,22 +285,12 @@ function sendState(socket) {
   } else if (p && g.phase === 'drawing' && g.guessed.has(p.id)) socket.emit('draw:word', { word: g.word }); // reloaded after guessing
 }
 
-/* ----- emotes, likes and dislikes ----- */
-const EMOTES = ['😂', '😮', '👏', '🔥', '❤️', '😡', '🤔', '😭', '🥳', '👀'];
+/* ----- likes and dislikes ----- */
 const who = (socket) => {
   const g = games.get(socket.data.code);
   return { g, p: g && g.players.get(g.userPlayer(socket.data.user.id)) };
 };
 const say = (g, text) => io.to(g.code).emit('draw:chat', { kind: 'system', text });
-
-function onEmote(socket, e) {
-  const { g, p } = who(socket);
-  if (!g || !p || !EMOTES.includes(e)) return;
-  const now = Date.now();
-  if (now - (g.emoteAt.get(p.id) || 0) < 1000) return; // no flooding
-  g.emoteAt.set(p.id, now);
-  io.to(g.code).emit('draw:emote', { id: p.id, e });
-}
 
 // like (1) or dislike (-1) the current drawing; the drawer cannot vote on their own picture; one vote each per turn
 function onReact(socket, v) {
@@ -346,4 +355,4 @@ function abort(code) {
   if (g) { clear(g); games.delete(code); }
 }
 
-module.exports = { init, has, start, sendState, abort, onSeg, onFill, onUndo, onClear, onPick, onGuess, onEmote, onReact, onKick, onVoteKick, EMOTES };
+module.exports = { init, has, start, sendState, abort, onSeg, onFill, onUndo, onClear, onPick, onGuess, onReact, onKick, onVoteKick };

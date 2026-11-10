@@ -11,6 +11,7 @@ const { loadStats } = require('./stats');
 const { cleanLook, parseLook, DEFAULT_LOOK } = require('./look');
 const { SKINS, byId, levelFor, xpAt, progressOf, isUnlocked, requirementText } = require('./skins');
 
+const { animId } = require('./anims');
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const fail = (status, message) => Object.assign(new Error(message), { status });
@@ -19,7 +20,7 @@ const str = (v, max) => String(v ?? '').trim().slice(0, max);
 /* ---------- Skribbl guests: only a name and a character, no account ---------- */
 // A guest token may only reach the character, profile and room routes; the room routes themselves
 // restrict guests to Draw & Guess rooms. Everything else (quizzes, stats, admin...) is closed to them.
-const GUEST_OK = /^\/(me|skins|profile(\/skin|\/look)?|play\/[^/]+|rooms(\/.*)?)$/;
+const GUEST_OK = /^\/(me|skins|profile(\/skin|\/look|\/anim)?|play\/[^/]+|rooms(\/.*)?)$/;
 router.use((req, res, next) => {
   let u;
   try { u = verify((req.headers.authorization || '').replace(/^Bearer /, '')); } catch { return next(); }
@@ -126,9 +127,9 @@ router.get('/skins', (req, res) => res.json(SKINS.map(({ id, name, emoji, c1, c2
 router.get('/stats', requireAuth, wrap(async (req, res) => res.json(await loadStats(db, req.user.id))));
 
 router.get('/profile', requireAuth, wrap(async (req, res) => {
-  const [[u]] = await db.query('SELECT xp, wins, tournaments, skin, look FROM users WHERE id = ?', [req.user.id]);
+  const [[u]] = await db.query('SELECT xp, wins, tournaments, skin, look, draw_anim, win_anim FROM users WHERE id = ?', [req.user.id]);
   if (!u) throw fail(404, 'User not found');
-  res.json({ ...forGuest(req, profileOf(u, await grantsOf(req.user.id))), look: parseLook(u.look) });
+  res.json({ ...forGuest(req, profileOf(u, await grantsOf(req.user.id))), look: parseLook(u.look), drawAnim: u.draw_anim, winAnim: u.win_anim });
 }));
 
 router.post('/profile/skin', requireAuth, wrap(async (req, res) => {
@@ -148,6 +149,18 @@ router.post('/profile/skin', requireAuth, wrap(async (req, res) => {
 }));
 
 // the Custom Doodle editor saves here (and equips the Custom Doodle)
+router.post('/profile/anim', requireAuth, wrap(async (req, res) => { // draw_anim / win_anim: an animation id, or null/'' for none
+  const b = req.body, sets = [], vals = [];
+  if (b.draw_anim !== undefined) { sets.push('draw_anim = ?'); vals.push(animId(b.draw_anim)); }
+  if (b.win_anim !== undefined) { sets.push('win_anim = ?'); vals.push(animId(b.win_anim)); }
+  if (sets.length) await db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.user.id]);
+  const [[u]] = await db.query('SELECT draw_anim, win_anim FROM users WHERE id = ?', [req.user.id]);
+  const [rooms] = await db.query(
+    "SELECT r.code FROM rooms r JOIN room_players p ON p.room_id = r.id WHERE p.user_id = ? AND r.status = 'lobby'", [req.user.id]);
+  for (const r of rooms) await game.broadcastLobby(r.code);
+  res.json({ drawAnim: u.draw_anim, winAnim: u.win_anim });
+}));
+
 router.post('/profile/look', requireAuth, wrap(async (req, res) => {
   const look = cleanLook(req.body.look);
   if (!look) throw fail(400, 'That character design is not valid');
@@ -269,6 +282,10 @@ async function setBots(q, roomId, want) {
 }
 const perMatch = (v) => Math.min(9, Math.max(1, Number(v) || 3));
 const textLen = (v) => (['short', 'medium', 'long'].includes(v) ? v : 'medium');
+const drawTime = (v) => Math.min(180, Math.max(30, Math.round(Number(v) || 80)));
+const wordCount = (v) => Math.min(5, Math.max(1, Math.round(Number(v) || 3)));
+const hintCount = (v) => Math.min(5, Math.max(0, Number.isFinite(Number(v)) ? Math.round(Number(v)) : 2));
+const cleanWords = (v) => [...new Set(String(v || '').split(/[,\n]/).map((w) => w.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim()).filter((w) => w.length >= 2 && w.length <= 30))].slice(0, 500).join(', ');
 const difficulty = (v) => (['easy', 'medium', 'hard'].includes(v) ? v : 'medium');
 
 router.post('/rooms', requireAuth, wrap(async (req, res) => {
@@ -283,9 +300,10 @@ router.post('/rooms', requireAuth, wrap(async (req, res) => {
   const botCount = req.body.fill_bots ? max - 1 : Math.min(max - 1, Math.max(0, Number(req.body.bot_count) || (req.body.bot_enabled ? 1 : 0)));
   const code = newCode();
   const [r] = await db.query(
-    'INSERT INTO rooms (code, invite_token, host_id, quiz_id, game_type, text_length, name, max_players, bot_difficulty, questions_per_match) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO rooms (code, invite_token, host_id, quiz_id, game_type, text_length, name, max_players, bot_difficulty, questions_per_match, draw_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     [code, crypto.randomBytes(12).toString('hex'), req.user.id, quiz ? quiz.id : null, gameType, textLen(req.body.text_length),
-      str(req.body.name, 80) || (quiz ? quiz.title : gameType === 'draw' ? 'Draw & Guess' : 'Typing race'), max, difficulty(req.body.bot_difficulty), perMatch(req.body.questions_per_match)]);
+      str(req.body.name, 80) || (quiz ? quiz.title : gameType === 'draw' ? 'Draw & Guess' : 'Typing race'), max, difficulty(req.body.bot_difficulty), perMatch(req.body.questions_per_match),
+      req.body.draw_time ? drawTime(req.body.draw_time) : 0]);
   await db.query('INSERT INTO room_players (room_id, user_id, display_name) VALUES (?,?,?)', [r.insertId, req.user.id, req.user.username]);
   await setBots(db, r.insertId, botCount);
   res.json({ code });
@@ -367,6 +385,13 @@ router.patch('/rooms/:code', requireAuth, wrap(async (req, res) => {
     [max, difficulty(req.body.bot_difficulty || state.botDifficulty),
       req.body.questions_per_match !== undefined ? perMatch(req.body.questions_per_match) : state.questionsPerMatch,
       textLen(req.body.text_length || state.textLength), id]);
+  if (state.gameType === 'draw') { // the skribbl style settings
+    const b = req.body;
+    await db.query('UPDATE rooms SET draw_time=?, word_count=?, hint_count=?, custom_words=?, custom_only=? WHERE id=?', [
+      b.draw_time !== undefined ? drawTime(b.draw_time) : state.drawTime, b.word_count !== undefined ? wordCount(b.word_count) : state.wordCount,
+      b.hint_count !== undefined ? hintCount(b.hint_count) : state.hintCount, b.custom_words !== undefined ? cleanWords(b.custom_words) : state.customWords,
+      b.custom_only !== undefined ? (b.custom_only ? 1 : 0) : state.customOnly ? 1 : 0, id]);
+  }
   await setBots(db, id, botCount);
   await game.broadcastLobby(code);
   res.json(await lobbyState(code));

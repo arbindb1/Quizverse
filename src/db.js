@@ -21,6 +21,12 @@ async function init() {
   for (const stmt of sql.split(/;\s*$/m).map((s) => s.trim()).filter(Boolean)) await pool.query(stmt);
   // upgrade databases created before the knockout format existed
   await ensureColumn('rooms', 'questions_per_match', 'TINYINT UNSIGNED NOT NULL DEFAULT 3');
+  // Draw & Guess lobby settings (like skribbl): drawing seconds (0 = use text_length), words to choose from, hints, custom words
+  await ensureColumn('rooms', 'draw_time', 'SMALLINT UNSIGNED NOT NULL DEFAULT 0');
+  await ensureColumn('rooms', 'word_count', 'TINYINT UNSIGNED NOT NULL DEFAULT 3');
+  await ensureColumn('rooms', 'hint_count', 'TINYINT UNSIGNED NOT NULL DEFAULT 2');
+  await ensureColumn('rooms', 'custom_words', 'TEXT NULL');
+  await ensureColumn('rooms', 'custom_only', 'TINYINT(1) NOT NULL DEFAULT 0');
   if (await ensureColumn('rooms', 'bot_count', 'TINYINT UNSIGNED NOT NULL DEFAULT 0')) {
     await pool.query('UPDATE rooms SET bot_count = 1 WHERE bot_enabled = 1');
   }
@@ -38,6 +44,8 @@ async function init() {
   await ensureColumn('users', 'last_seen_at', 'TIMESTAMP NULL');
   await ensureColumn('users', 'login_count', 'INT UNSIGNED NOT NULL DEFAULT 0');
   await ensureColumn('users', 'look', 'TEXT NULL'); // Custom Doodle parts, JSON
+  await ensureColumn('users', 'draw_anim', 'VARCHAR(16) NULL'); // animation shown when this player draws
+  await ensureColumn('users', 'win_anim', 'VARCHAR(16) NULL'); // animation shown on the podium (top 3)
   await ensureColumn('users', 'is_guest', 'TINYINT(1) NOT NULL DEFAULT 0'); // Skribbl guests: just a name and a character
   await ensureIndex('users', 'uq_users_email', 'UNIQUE KEY uq_users_email (email)');
   // typing-race tournaments have no quiz

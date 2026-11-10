@@ -995,6 +995,7 @@ function drawLobby(L, isHost) {
   const full = L.players.length >= L.maxPlayers && !L.botCount;
   const typing = L.gameType === 'typerace';
   const drawing = L.gameType === 'draw';
+  if (drawing && L.status !== 'finished') return drawSkrLobby(L, isHost, link);
   let size = 2;
   while (size < L.players.length) size *= 2;
   const rounds = Math.log2(size);

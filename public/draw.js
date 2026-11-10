@@ -17,13 +17,13 @@ function wireDraw() {
     if (s.phase === 'choosing' && (!prev || prev.phase !== 'choosing') && !(lastMsg && lastMsg.text === note)) R.d.chat.push({ kind: 'system', text: note });
     R.phase = 'draw';
     drawDrawUI();
+    drawAnimSticker();
   });
   sock.on('draw:choices', ({ words }) => { R.d.choices = words; drawDrawUI(); });
   sock.on('draw:word', ({ word }) => { R.d.word = word; drawDrawUI(); });
   sock.on('draw:redraw', ({ strokes }) => { R.d.strokes = strokes.map((s) => ({ ...s, pts: s.pts ? [...s.pts] : undefined })); repaint(); });
   sock.on('draw:seg', (seg) => addSeg(seg));
   sock.on('draw:fill', (f) => { R.d.strokes.push({ ...f }); const c = dCanvas(); if (c) floodFill(c.getContext('2d'), f.x, f.y, f.c); });
-  sock.on('draw:emote', ({ id, e }) => floatEmote(id, e));
   sock.on('draw:players', ({ players }) => { R.pl = players; R.d.menuFor = null; if (R.d.s) drawPlayers(); }); // somebody was removed
   sock.on('draw:kicked', ({ how }) => { toast(how === 'vote' ? 'The other players voted you out of the game' : 'The host removed you from the game'); location.hash = '#/'; });
   sock.on('draw:chat', (m) => {
@@ -161,17 +161,14 @@ function buildDrawShell() {
     <div class="card draw-top"><div class="dleft"><span id="dround" class="muted small"></span><span id="dwho" class="dwho"></span></div><div id="dhint" class="dhint"></div><span id="dtimer" class="dtimer"></span><button class="ghost fsbtn" id="dfs" title="Full screen" aria-label="Full screen">⛶</button><div class="tbar"><div id="dbar"></div></div></div>
     <div class="draw-main">
       <div class="card draw-players" id="dplayers"></div>
-      <div class="draw-center"><div class="canvas-wrap"><canvas id="dcanvas" width="${DRAW_W}" height="${DRAW_H}"></canvas><div id="doverlay" class="doverlay"></div><div id="dlike" class="dlike dlike-corner"></div></div><div id="dtools" class="dtools"></div></div>
-      <div class="card draw-chat"><div id="dchat" class="dchat"></div><button class="ghost emotoggle" id="demotetoggle" type="button"></button><div class="demotes" id="demotes">${EMOTES.map((e) => `<button data-emote="${e}" aria-label="emote ${e}">${e}</button>`).join('')}</div><input id="dguess" maxlength="60" autocomplete="off" placeholder="Type your guess…"></div>
+      <div class="draw-center"><div class="canvas-wrap"><canvas id="dcanvas" width="${DRAW_W}" height="${DRAW_H}"></canvas><div id="danim" class="danim"></div><div id="doverlay" class="doverlay"></div><div id="dlike" class="dlike dlike-corner"></div></div><div id="dtools" class="dtools"></div></div>
+      <div class="card draw-chat"><div id="dchat" class="dchat"></div><input id="dguess" maxlength="60" autocomplete="off" placeholder="Type your guess…"></div>
     </div></div>`;
   const c = dCanvas();
   bindCanvas(c);
   $('#dfs').onclick = () => { // real full screen (the browser chrome goes away); press again or Esc to leave
     if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {});
   };
-  $('#demotetoggle').onclick = () => { setEmotesHidden(!emotesHidden()); updateEmoteUi(); };
-  updateEmoteUi();
-  $('#demotes').onclick = (e) => { const b = e.target.closest('[data-emote]'); if (b) sock.emit('draw:emote', b.dataset.emote); };
   $('#dlike').onclick = (e) => { // 👍 / 👎 on the drawing (not for the drawer), one vote each, the last one counts
     const b = e.target.closest('[data-react]');
     if (!b || amDrawer()) return;
@@ -211,6 +208,31 @@ function buildDrawShell() {
   };
   R.d.built = true;
   repaint();
+}
+
+// ----- the animation (GIF) a player picked for their drawing turn: it pops up big when they start drawing, then sits small in the corner
+let ANIM_FILES = {}, ANIM_NAMES = {}, ANIM_MS = {}; // id -> file extension of the clips that exist, id -> display name (from /api/anims)
+const animSrc = (id) => (ANIM_FILES[id] ? '/media/anim/' + id + '.' + ANIM_FILES[id] : '');
+const animEl = (id, cls = '') => { const s = animSrc(id); if (!s) return ''; if (/\.(webp|png)$/.test(s)) cls += ' tr'; /* transparent clips have no frame */ return /\.(mp4|webm)$/.test(s) ? `<video class="${cls}" src="${s}#t=0.1" autoplay loop muted playsinline preload="auto"></video>` : `<img class="${cls}" alt="" src="${s}">`; };
+const animsReady = fetch('/api/anims').then((r) => r.json()).then((d) => { ANIM_FILES = d.files || {}; ANIM_MS = d.ms || {}; ANIM_NAMES = Object.fromEntries((d.list || []).map((a) => [a.id, a.name])); }).catch(() => {});
+function drawAnimSticker() {
+  const el = document.getElementById('danim'), s = R.d && R.d.s;
+  if (!el || !s) return;
+  const p = R.pl && R.pl[s.drawerId], src = p && animSrc(p.drawAnim);
+  if (s.phase !== 'drawing' || !src) { el.className = 'danim'; el.innerHTML = ''; R.d.animKey = null; clearTimeout(R.d.animT); return; }
+  const key = s.round + ':' + s.drawerId + ':' + s.endsAt;
+  if (R.d.animKey === key) return;
+  R.d.animKey = key;
+  const fresh = Date.now() - (s.endsAt - s.drawSeconds * 1000) < 3000; // joined late: no pop, straight to the corner
+  clearTimeout(R.d.animT);
+  if (!fresh) { el.className = 'danim'; el.innerHTML = ''; return; } // joined late: the clip already played
+  // the clip covers the whole whiteboard until it has played once, then it is gone (no thumbnail stays behind)
+  el.innerHTML = animEl(p.drawAnim) + '<span>' + esc(p.name) + '</span>';
+  el.className = 'danim pop';
+  const done = () => { if (R.d.animKey === key) { el.className = 'danim'; el.innerHTML = ''; } };
+  const v = el.querySelector('video');
+  if (v) { v.loop = false; v.onended = done; v.play().catch(() => {}); R.d.animT = setTimeout(done, 9000); }
+  else R.d.animT = setTimeout(done, Math.min(9000, Math.max(2000, ANIM_MS[p.drawAnim] || 2500)));
 }
 
 function drawDrawUI() {
@@ -267,7 +289,26 @@ function drawPlayers() {
       <span class="pinfo"><span class="pnm" title="${esc(nm(id))}">${esc(nm(id))}</span><span class="psub"><span class="rk">#${rank(id)}</span><span class="pst">${status}</span></span></span>
       <span class="psc"><b>${s.scores[id] || 0}</b><i class="ok">${gain}</i></span></div>`;
   }).join('');
+  fitPlayers();
 }
+
+// every player stays visible: rows get smaller when there are many, and move to two columns when they would get too small
+function fitPlayers() {
+  const box = $('#dplayers');
+  if (!box || !box.firstChild) return;
+  const n = box.querySelectorAll('.player').length;
+  if (!n) return;
+  box.classList.remove('cols2');
+  box.style.removeProperty('--prow');
+  if (!document.body.classList.contains('draw-live')) return;
+  const head = [...box.children].filter((c) => !c.classList.contains('player')).reduce((t, c) => t + c.offsetHeight + 10, 0);
+  const avail = box.clientHeight - head - 24;
+  let rows = n, h = avail / n;
+  if (h < 40) { box.classList.add('cols2'); rows = Math.ceil(n / 2); h = avail / rows; }
+  h = Math.max(34, Math.min(74, Math.floor(h) - 6));
+  box.style.setProperty('--prow', h + 'px');
+}
+if (!window.__fitPlayers) { window.__fitPlayers = true; window.addEventListener('resize', () => { if (typeof fitPlayers === 'function') fitPlayers(); }); }
 
 function drawOverlay() {
   const s = R.d.s, o = $('#doverlay');
@@ -326,41 +367,15 @@ function podiumHtml(board, myId) {
   const slot = (rank, cls) => {
     const s = board[rank];
     if (!s) return `<div class="pod ${cls}"></div>`;
-    return `<div class="pod ${cls}"><div class="pod-who">${rank === 0 ? '<div class="crown">👑</div>' : ''}${charOf(s.id, rank === 0 ? 'lg' : 'md', rank === 0 ? 'a-champion' : '')}
+    const wsrc = animSrc(s.winAnim || (R.pl && R.pl[s.id] && R.pl[s.id].winAnim)); // the GIF the winner picked, above their picture
+    return `<div class="pod ${cls}"><div class="pod-who">${wsrc ? animEl(wsrc && (s.winAnim || R.pl[s.id].winAnim), 'pod-anim ' + (rank === 0 ? 'pod-lg' : '')) : ''}${rank === 0 ? '<div class="crown">👑</div>' : ''}${charOf(s.id, rank === 0 ? 'lg' : 'md', rank === 0 ? 'a-champion' : '')}
       <div class="pod-name">${esc(s.name)}</div><div class="pod-score">${s.score} pts</div></div><div class="pod-step"><span>${rank + 1}</span></div></div>`;
   };
   return `<div class="card podium-card"><h2 style="text-align:center">🏆 ${board[0] ? esc(board[0].name) + ' wins!' : 'Game over'}</h2><div class="podium">${slot(1, 'second')}${slot(0, 'first')}${slot(2, 'third')}</div>
     ${board.length > 3 ? `<div class="pgrid">${board.slice(3).map((s, i) => `<div class="pg ${s.id === myId ? 'me' : ''}"><span class="pg-rk">#${s.placement || i + 4}</span>${charOf(s.id, 'md')}<b class="pg-name" title="${esc(s.name)}">${esc(s.name)}</b><span class="pg-sc">${s.score} pts</span></div>`).join('')}</div>` : ''}</div>`;
 }
 
-/* ----- emotes, likes ----- */
-const EMOTES = ['😂', '😮', '👏', '🔥', '❤️', '😡', '🤔', '😭', '🥳', '👀']; // the same list as the server (src/draw.js)
-
-// hide emotes: the emote bar goes away and other people's emotes no longer float over the player list (remembered in this browser)
-const emotesHidden = () => { if (typeof window.__emotesHidden === 'boolean') return window.__emotesHidden; try { return localStorage.getItem('qv_hide_emotes') === '1'; } catch { return false; } };
-const setEmotesHidden = (v) => { try { localStorage.setItem('qv_hide_emotes', v ? '1' : '0'); } catch { /* private mode: the choice just lasts until the page closes */ } window.__emotesHidden = v; };
-function updateEmoteUi() {
-  const hidden = emotesHidden();
-  const bar = document.getElementById('demotes'), btn = document.getElementById('demotetoggle');
-  if (bar) bar.style.display = hidden ? 'none' : '';
-  if (btn) { btn.textContent = hidden ? '🙂 Show emotes' : '🙈 Hide emotes'; btn.setAttribute('aria-pressed', hidden ? 'true' : 'false'); }
-  if (hidden) document.querySelectorAll('.emofly').forEach((el) => el.remove());
-}
-
-// an emote floats up from the player's picture (drawn in its own layer so the player list redrawing does not remove it)
-function floatEmote(id, e) {
-  if (emotesHidden()) return; // the player chose not to see emotes
-  const row = document.querySelector(`#dplayers .player[data-pid="${id}"] .pa`);
-  if (!row) return;
-  const r = row.getBoundingClientRect();
-  const el = document.createElement('div');
-  el.className = 'emofly';
-  el.textContent = e;
-  Object.assign(el.style, { left: r.left + r.width / 2 - 16 + 'px', top: r.top + 'px' });
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2100);
-}
-
+/* ----- likes ----- */
 // 👍 / 👎 under the timer while a drawing is up and in the reveal; the drawer only sees the counts
 function drawLike() {
   const el = document.getElementById('dlike');
@@ -373,4 +388,64 @@ function drawLike() {
   const my = 0;
   el.classList.toggle('ro', drawer); // the drawer only sees the counts, and the buttons never get in the way of their pen
   el.innerHTML = `<button class="lk ${my === 1 ? 'on' : ''}" data-react="1" ${drawer ? 'disabled' : ''} title="Like this drawing">👍</button><button class="lk ${my === -1 ? 'on bad' : ''}" data-react="-1" ${drawer ? 'disabled' : ''} title="Dislike this drawing">👎</button>`;
+}
+
+/* ---------- the Draw & Guess waiting room (skribbl style): players left, settings in the middle, invite right ---------- */
+function drawSkrLobby(L, isHost, link) {
+  if (!window.__animsLoaded) { window.__animsLoaded = true; animsReady.then(() => { if (R && R.lobby && document.querySelector('.skl-main')) drawRoom(); }); }
+  const opts = (list, cur, fmt) => list.map((v) => `<option value="${v}" ${Number(cur) === v ? 'selected' : ''}>${fmt ? fmt(v) : v}</option>`).join('');
+  const times = [30, 45, 60, 80, 100, 120, 150, 180];
+  if (!times.includes(L.drawTime)) times.push(L.drawTime), times.sort((a, b) => a - b);
+  const row = (label, icon, ctl, val) => `<div class="srow"><label>${icon} ${label}</label>${isHost ? ctl : `<b class="sval">${val}</b>`}</div>`;
+  const full = L.players.length >= L.maxPlayers && !L.botCount;
+  app.innerHTML = `<div class="skl-top"><div class="skr-logo skl-logo" aria-label="Draw and Guess">${[...'Draw&Guess'].map((c, i) => `<span style="--i:${i}">${c}</span>`).join('')}</div></div>
+  <div class="skl-main">
+    <div class="skl-card skl-players"><div class="skl-h">Players <span>${L.players.length}/${L.maxPlayers}</span></div>
+      ${L.players.map((p, i) => `<div class="skl-p ${p.userId === me.id ? 'me' : ''}"><span class="skl-n">${esc(p.name)}${p.userId === me.id ? ' (You)' : ''}</span><span class="skl-t">${p.isHost ? '👑 Host' : p.isBot ? '🤖 Bot' : ''}</span><span class="pa">${charHtml(p, 'sm', 'a-idle')}</span></div>`).join('')}
+      ${full ? '<div class="skl-full">Room full</div>' : ''}</div>
+    <div class="skl-card skl-set"><div class="skl-h dark">Game settings</div>
+      <div class="sgrid">
+      ${row('Players', '👥', `<select id="max">${opts(Array.from({ length: 49 }, (_, i) => i + 2), L.maxPlayers)}</select>`, L.maxPlayers)}
+      ${row('Drawtime', '⏱️', `<select id="dtime">${opts(times, L.drawTime, (v) => v + ' s')}</select>`, L.drawTime + ' s')}
+      ${row('Rounds', '🔁', `<select id="ppm">${opts([1, 2, 3, 4, 5, 6, 7, 8, 9], L.questionsPerMatch)}</select>`, L.questionsPerMatch)}
+      ${row('Word Count', '🔤', `<select id="wcount">${opts([1, 2, 3, 4, 5], L.wordCount)}</select>`, L.wordCount)}
+      ${row('Hints', '💡', `<select id="hints">${opts([0, 1, 2, 3, 4, 5], L.hintCount)}</select>`, L.hintCount)}
+      ${row('Bots', '🤖', `<select id="bots">${opts(Array.from({ length: 50 }, (_, i) => i), L.botCount)}</select>`, L.botCount)}
+      ${row('Bot level', '🎯', `<select id="diff" ${L.botCount > 0 ? '' : 'disabled'}>${['easy', 'medium', 'hard'].map((d) => `<option value="${d}" ${L.botDifficulty === d ? 'selected' : ''}>${d}</option>`).join('')}</select>`, L.botDifficulty)}
+      </div>
+      ${isHost ? `<div class="skl-cw"><textarea id="cwords" rows="3" placeholder="Enter your custom words here, separated by comma">${esc(L.customWords)}</textarea>
+        <label class="skl-chk"><input type="checkbox" id="conly" ${L.customOnly ? 'checked' : ''}> Use custom words only</label></div>`
+        : L.customWords ? '<div class="skl-cw muted small">The host added custom words.</div>' : ''}
+      <div class="skl-act">${isHost ? `<button class="skl-start" id="start" ${L.players.length < 2 ? 'disabled' : ''}>Start!</button>` : '<div class="skl-wait">Waiting for the host to start…</div>'}
+        <button class="skl-copy" id="copy">🔗 Copy invite</button><input id="link" class="skl-link" readonly value="${esc(link)}"></div>
+      ${isHost && L.players.length < 2 ? '<div class="skl-hint">Invite a friend with the link or add bots to start.</div>' : ''}
+      ${isHost ? '<div class="skl-hint"><button class="skl-fill" id="fill" type="button">Fill all slots with bots</button></div>' : ''}
+    </div>
+    <div class="skl-card skl-side"><div class="skl-h">You</div>
+      <div class="skl-me">${charHtml({ skin: R.profile ? R.profile.skin : 'custom', look: R.profile ? R.profile.look : null, name: me.username }, 'md', 'a-idle')}<b>${esc(me.username)}</b></div>
+      <a class="btn skl-edit" href="#/customize">🎭 Customize your doodle</a>
+      ${Object.keys(ANIM_FILES).length ? `<div class="skl-anim">${[['draw', 'When you draw', R.profile && R.profile.drawAnim], ['win', 'If you finish top 3', R.profile && R.profile.winAnim]].map(([k, label, cur]) => `<b>${label}</b><div class="anim-grid">${[['', 'None'], ...Object.keys(ANIM_FILES).map((id) => [id, ANIM_NAMES[id] || id])].map(([id, name]) => `<button type="button" class="anim-t ${(cur || '') === id ? 'on' : ''}" data-ak="${k}" data-aid="${id}" title="${name}">${id ? animEl(id) : '<span>🚫</span>'}</button>`).join('')}</div>`).join('')}</div>` : ''}
+      <div class="skl-rules"><b>How scoring works</b><span>A correct guess earns up to 420 points: the earlier you guess, the more you get (the bonus shrinks every second), plus a share of up to 120 for every hint that has not been shown yet. The order of guessing does not matter.</span><span>The drawer gets the average of all other players' points, so players who did not guess count as 0.</span></div>
+      ${isHost ? '' : '<button class="ghost" id="leave">Leave room</button>'}</div>
+  </div>`;
+  const patch = async () => {
+    try {
+      await api('PATCH', '/rooms/' + L.code, {
+        max_players: $('#max').value, questions_per_match: $('#ppm').value, draw_time: $('#dtime').value, word_count: $('#wcount').value,
+        hint_count: $('#hints').value, bot_count: $('#bots').value, bot_difficulty: $('#diff').value,
+        custom_words: $('#cwords').value, custom_only: $('#conly').checked,
+      });
+    } catch (e) { toast(e.message); drawRoom(); }
+  };
+  ['#max', '#ppm', '#dtime', '#wcount', '#hints', '#bots', '#diff', '#cwords', '#conly'].forEach((s) => $(s) && ($(s).onchange = patch));
+  document.querySelectorAll('.anim-t').forEach((b) => (b.onclick = async () => {
+    try { const r = await api('POST', '/profile/anim', { [b.dataset.ak === 'draw' ? 'draw_anim' : 'win_anim']: b.dataset.aid || null }); R.profile = { ...R.profile, ...r }; drawRoom(); } catch (e) { toast(e.message); }
+  }));
+  if ($('#fill')) $('#fill').onclick = async () => { try { await api('PATCH', '/rooms/' + L.code, { fill_bots: true, bot_difficulty: $('#diff').value }); } catch (e) { toast(e.message); } };
+  $('#copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(link); } catch { $('#link').select(); document.execCommand('copy'); }
+    toast('Invite link copied', true);
+  };
+  if ($('#start')) $('#start').onclick = () => sock.emit('room:start', (res) => !res.ok && toast(res.error));
+  if ($('#leave')) $('#leave').onclick = async () => { try { await api('POST', `/rooms/${L.code}/leave`); location.hash = '#/'; } catch (e) { toast(e.message); } };
 }

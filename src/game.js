@@ -83,7 +83,6 @@ function init(httpServer) {
     socket.on('draw:clear', () => draw.onClear(socket));
     socket.on('draw:pick', (word) => draw.onPick(socket, word));
     socket.on('draw:guess', (text) => draw.onGuess(socket, text));
-    socket.on('draw:emote', (e) => draw.onEmote(socket, e));
     socket.on('draw:react', (v) => draw.onReact(socket, v));
     socket.on('draw:kick', (id) => draw.onKick(socket, id));
     socket.on('draw:votekick', (id) => draw.onVoteKick(socket, id));
@@ -488,7 +487,7 @@ function endMatch(g, m, winnerId) {
 
 async function finalBoard(code) {
   const [rows] = await db.query(
-    `SELECT p.id, p.display_name AS name, p.is_bot AS isBot, p.score, p.placement, COALESCE(u.skin, p.skin) AS skin, u.look FROM room_players p
+    `SELECT p.id, p.display_name AS name, p.is_bot AS isBot, p.score, p.placement, COALESCE(u.skin, p.skin) AS skin, u.look, u.win_anim AS winAnim FROM room_players p
        JOIN rooms r ON r.id = p.room_id LEFT JOIN users u ON u.id = p.user_id WHERE r.code = ? ORDER BY p.placement IS NULL, p.placement, p.score DESC, p.id`, [code]);
   // skin and look are included so the end screen can draw everybody even when the page was opened after the game finished
   return rows.map((r) => ({ ...r, isBot: !!r.isBot, look: parseLook(r.look) }));
