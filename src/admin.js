@@ -1,11 +1,15 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
 const db = require('./db');
 const game = require('./game');
 const { requireAuth, requireAdmin, forgetAccount } = require('./auth');
 const { wrap, fail, str, EMAIL, errorHandler } = require('./http');
 const { SKINS, byId, levelFor, xpAt, progressOf, requirementText } = require('./skins');
 const { loadStats } = require('./stats');
+const { ANIMS, allAnims } = require('./anims');
+const { fitGif } = require('./gif');
 
 const router = express.Router();
 const REAL = "u.password_hash <> '!'"; // the built-in "quizverse" account owns the starter quizzes and is not a person
@@ -298,6 +302,46 @@ router.delete('/categories/:id', wrap(async (req, res) => {
   await db.query('DELETE FROM categories WHERE id = ?', [c.id]); // quizzes in it simply become uncategorised
   await logAction(req, 'delete_category', c.name);
   res.json({ ok: true });
+}));
+
+/* ---------- Draw & Guess GIF presets (on top of the fixed list shipped in src/anims.js) ---------- */
+const ANIM_DIR = path.join(__dirname, '..', 'public', 'media', 'anim'); // admin presets live next to the built-in files
+const ANIM_ID_RE = /^[a-z0-9-]{2,16}$/;
+router.get('/anims', wrap(async (req, res) => {
+  const [rows] = await db.query('SELECT id, name, created_at FROM anim_presets ORDER BY created_at DESC');
+  res.json({ builtin: ANIMS, added: rows });
+}));
+
+router.post('/anims/:id', express.raw({ type: 'image/gif', limit: '8mb' }), wrap(async (req, res) => {
+  const id = String(req.params.id || '').toLowerCase();
+  const name = str(req.query.name, 40);
+  if (!ANIM_ID_RE.test(id)) throw fail(400, 'Id must be 2-16 lowercase letters, numbers or dashes');
+  if (id === 'custom') throw fail(400, '"custom" is reserved for players\' own uploads');
+  if (!name) throw fail(400, 'Name is required');
+  if (ANIMS.some((a) => a.id === id)) throw fail(409, 'That id is already a built-in animation');
+  const [[clash]] = await db.query('SELECT id FROM anim_presets WHERE id = ?', [id]);
+  if (clash) throw fail(409, 'That id is already in use - delete it first or pick another');
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw fail(400, 'No GIF file received');
+  if (req.body.subarray(0, 3).toString('ascii') !== 'GIF') throw fail(400, 'That file is not a GIF');
+  const buf = await fitGif(req.body);
+  if (!buf) throw fail(400, 'This GIF is too big even after compression - try a shorter or smaller clip');
+  fs.writeFileSync(path.join(ANIM_DIR, `${id}.gif`), buf);
+  await db.query('INSERT INTO anim_presets (id, name, created_by) VALUES (?, ?, ?)', [id, name, req.user.id]);
+  await logAction(req, 'add_anim', name, { id });
+  res.json(await allAnims());
+}));
+
+router.delete('/anims/:id', wrap(async (req, res) => {
+  const id = String(req.params.id || '').toLowerCase();
+  const [[row]] = await db.query('SELECT id, name FROM anim_presets WHERE id = ?', [id]);
+  if (!row) throw fail(404, 'That GIF was not added through the CMS (built-in ones cannot be removed here)');
+  await db.query('DELETE FROM anim_presets WHERE id = ?', [id]);
+  // players who had it selected fall back to no animation rather than point at a missing file
+  await db.query('UPDATE users SET draw_anim = NULL WHERE draw_anim = ?', [id]);
+  await db.query('UPDATE users SET win_anim = NULL WHERE win_anim = ?', [id]);
+  try { fs.unlinkSync(path.join(ANIM_DIR, `${id}.gif`)); } catch {} // already gone is fine
+  await logAction(req, 'remove_anim', row.name, { id });
+  res.json(await allAnims());
 }));
 
 /* ---------- activity log ---------- */

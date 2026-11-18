@@ -1,5 +1,5 @@
 /* Quizverse admin CMS: analytics, accounts, tournaments, content, activity log (only reachable for admins; the server checks too) */
-const aTabs = [['', 'Overview'], ['users', 'Users'], ['rooms', 'Tournaments'], ['content', 'Content'], ['log', 'Activity log']];
+const aTabs = [['', 'Overview'], ['users', 'Users'], ['rooms', 'Tournaments'], ['content', 'Content'], ['anims', 'GIFs'], ['log', 'Activity log']];
 const aState = { users: { q: '', sort: 'id', dir: 'desc', page: 1 }, rooms: { status: '', page: 1 } };
 const aFmt = (d) => (d ? new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '–');
 const aDay = (d) => { const [, m, dd] = String(d).split('-'); return `${dd}/${m}`; };
@@ -10,7 +10,8 @@ async function viewAdmin(arg = '') {
   const head = `<h2>Admin</h2><div class="row admin-tabs">${aTabs.map(([k, l]) => `<a class="btn ${k === tab ? '' : 'ghost'}" href="#/admin${k ? '/' + k : ''}">${l}</a>`).join('')}</div><div style="height:14px"></div>`;
   app.innerHTML = head + '<p class="muted">Loading…</p>';
   const body = /^u\d+$/.test(arg) ? await adminUser(Number(arg.slice(1))) : tab === 'users' ? await adminUsers()
-    : tab === 'rooms' ? await adminRooms() : tab === 'content' ? await adminContent() : tab === 'log' ? await adminLog() : await adminOverview();
+    : tab === 'rooms' ? await adminRooms() : tab === 'content' ? await adminContent() : tab === 'anims' ? await adminAnims()
+    : tab === 'log' ? await adminLog() : await adminOverview();
   app.innerHTML = head + body.html;
   if (body.wire) body.wire();
 }
@@ -190,6 +191,49 @@ async function adminContent() {
       app.querySelectorAll('[data-delcat]').forEach((b) => { b.onclick = () => { if (confirm(`Delete category "${b.dataset.name}"? Its quizzes become uncategorised.`)) run(() => api('DELETE', '/admin/categories/' + b.dataset.delcat), 'Deleted'); }; });
       app.querySelectorAll('[data-vis]').forEach((b) => { b.onclick = () => run(() => api('PATCH', '/admin/quizzes/' + b.dataset.vis, { is_public: b.dataset.pub !== '1' }), 'Updated'); });
       app.querySelectorAll('[data-delquiz]').forEach((b) => { b.onclick = () => { if (confirm(`Delete quiz "${b.dataset.name}" and all its questions?`)) run(() => api('DELETE', '/admin/quizzes/' + b.dataset.delquiz), 'Deleted'); }; });
+    },
+  };
+}
+
+/* ----- Draw & Guess GIF presets ----- */
+async function adminAnims() {
+  const [d, pub] = await Promise.all([api('GET', '/admin/anims'), api('GET', '/anims')]);
+  const files = pub.files || {};
+  const thumb = (id) => { const ext = files[id]; if (!ext) return '<span class="muted small">no file</span>';
+    const src = `/media/anim/${id}.${ext}`;
+    return /\.(mp4|webm)$/.test(src) ? `<video class="atm" src="${src}#t=0.1" autoplay loop muted playsinline></video>` : `<img class="atm" src="${src}" alt="">`; };
+  return {
+    html: `<div class="card"><h3>Add a GIF preset</h3>
+      <p class="muted small">Shown to every player in the "When you draw" / "If you finish top 3" picker, next to the built-in ones. GIFs over 2MB are compressed automatically; anything that still won't fit is rejected.</p>
+      <div class="aform"><label>Id (2-16 lowercase letters, numbers or dashes)</label><input id="an-id" placeholder="e.g. party-parrot">
+      <label>Display name</label><input id="an-name" placeholder="e.g. Party Parrot">
+      <label>GIF file</label><input id="an-file" type="file" accept=".gif,image/gif"></div>
+      <div class="err" id="an-err"></div>
+      <button id="an-add">Add GIF</button></div>
+      <div class="card"><h3>Added by admins</h3>${d.added.map((a) => `<div class="list-item"><div class="row">${thumb(a.id)}<div><b>${esc(a.name)}</b><div class="muted small">${esc(a.id)}</div></div></div>
+        <button class="danger" data-delanim="${a.id}" data-name="${esc(a.name)}">Delete</button></div>`).join('') || '<p class="muted">None yet.</p>'}</div>
+      <div class="card"><h3>Built-in</h3><p class="muted small">Ship with the code (src/anims.js); remove one by deleting its id and file there, not here.</p>
+        ${d.builtin.map((a) => `<div class="list-item"><div class="row">${thumb(a.id)}<div><b>${esc(a.name)}</b><div class="muted small">${esc(a.id)}</div></div></div></div>`).join('')}</div>`,
+    wire() {
+      $('#an-add').onclick = async () => {
+        const id = $('#an-id').value.trim().toLowerCase(), name = $('#an-name').value.trim(), f = $('#an-file').files[0];
+        $('#an-err').textContent = '';
+        if (!f) { $('#an-err').textContent = 'Choose a .gif file'; return; }
+        if (!/\.gif$/i.test(f.name) && f.type !== 'image/gif') { $('#an-err').textContent = 'Please choose a .gif file'; return; }
+        if (f.size > 8 * 1024 * 1024) { $('#an-err').textContent = 'GIF must be 8MB or smaller'; return; }
+        try {
+          const res = await fetch(`/api/admin/anims/${encodeURIComponent(id)}?name=${encodeURIComponent(name)}`, {
+            method: 'POST', headers: { 'Content-Type': 'image/gif', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: f,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Upload failed');
+          toast('GIF added', true); viewAdmin('anims');
+        } catch (e) { $('#an-err').textContent = e.message; toast(e.message); }
+      };
+      app.querySelectorAll('[data-delanim]').forEach((b) => (b.onclick = async () => {
+        if (!confirm(`Delete "${b.dataset.name}"? Players who picked it lose that choice.`)) return;
+        try { await api('DELETE', '/admin/anims/' + b.dataset.delanim); toast('Deleted', true); viewAdmin('anims'); } catch (e) { toast(e.message); }
+      }));
     },
   };
 }

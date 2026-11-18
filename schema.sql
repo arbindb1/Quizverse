@@ -145,3 +145,13 @@ CREATE TABLE IF NOT EXISTS draw_words (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_draw_words_word (word)
 ) ENGINE=InnoDB;
+
+-- GIF presets an admin added through the CMS (on top of the fixed list in src/anims.js), stored at
+-- public/media/anim/<id>.gif and offered to every player alongside the built-in ones
+CREATE TABLE IF NOT EXISTS anim_presets (
+  id VARCHAR(16) PRIMARY KEY, -- must fit users.draw_anim / users.win_anim (VARCHAR(16))
+  name VARCHAR(40) NOT NULL,
+  created_by INT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;

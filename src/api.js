@@ -1,6 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { fitGif } = require('./gif');
 const db = require('./db');
 const { sign, verify, requireAuth } = require('./auth');
 const { isConfiguredAdmin } = require('./admin');
@@ -151,9 +154,41 @@ router.post('/profile/skin', requireAuth, wrap(async (req, res) => {
 // the Custom Doodle editor saves here (and equips the Custom Doodle)
 router.post('/profile/anim', requireAuth, wrap(async (req, res) => { // draw_anim / win_anim: an animation id, or null/'' for none
   const b = req.body, sets = [], vals = [];
-  if (b.draw_anim !== undefined) { sets.push('draw_anim = ?'); vals.push(animId(b.draw_anim)); }
-  if (b.win_anim !== undefined) { sets.push('win_anim = ?'); vals.push(animId(b.win_anim)); }
+  if (b.draw_anim !== undefined) { sets.push('draw_anim = ?'); vals.push(await animId(b.draw_anim)); }
+  if (b.win_anim !== undefined) { sets.push('win_anim = ?'); vals.push(await animId(b.win_anim)); }
   if (sets.length) await db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, [...vals, req.user.id]);
+  const [[u]] = await db.query('SELECT draw_anim, win_anim FROM users WHERE id = ?', [req.user.id]);
+  const [rooms] = await db.query(
+    "SELECT r.code FROM rooms r JOIN room_players p ON p.room_id = r.id WHERE p.user_id = ? AND r.status = 'lobby'", [req.user.id]);
+  for (const r of rooms) await game.broadcastLobby(r.code);
+  res.json({ drawAnim: u.draw_anim, winAnim: u.win_anim });
+}));
+
+// a player's own GIF, used instead of picking from the preset list: stored at media/anim/custom/<userId>-<kind>.gif
+// and referenced as the sentinel id 'custom' (animId() never accepts it, so it can only be set here, after the file checks out)
+const CUSTOM_ANIM_DIR = path.join(__dirname, '..', 'public', 'media', 'anim', 'custom');
+router.post('/profile/anim/upload/:kind', requireAuth, express.raw({ type: 'image/gif', limit: '8mb' }), wrap(async (req, res) => {
+  const kind = req.params.kind;
+  if (kind !== 'draw' && kind !== 'win') throw fail(400, 'Unknown animation slot');
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw fail(400, 'No GIF file received');
+  if (req.body.subarray(0, 3).toString('ascii') !== 'GIF') throw fail(400, 'That file is not a GIF');
+  const buf = await fitGif(req.body);
+  if (!buf) throw fail(400, 'This GIF is too big even after compression - try a shorter or smaller clip');
+  fs.mkdirSync(CUSTOM_ANIM_DIR, { recursive: true });
+  fs.writeFileSync(path.join(CUSTOM_ANIM_DIR, `${req.user.id}-${kind}.gif`), buf);
+  await db.query(`UPDATE users SET ${kind === 'draw' ? 'draw_anim' : 'win_anim'} = 'custom' WHERE id = ?`, [req.user.id]);
+  const [[u]] = await db.query('SELECT draw_anim, win_anim FROM users WHERE id = ?', [req.user.id]);
+  const [rooms] = await db.query(
+    "SELECT r.code FROM rooms r JOIN room_players p ON p.room_id = r.id WHERE p.user_id = ? AND r.status = 'lobby'", [req.user.id]);
+  for (const r of rooms) await game.broadcastLobby(r.code);
+  res.json({ drawAnim: u.draw_anim, winAnim: u.win_anim });
+}));
+
+router.delete('/profile/anim/upload/:kind', requireAuth, wrap(async (req, res) => {
+  const kind = req.params.kind;
+  if (kind !== 'draw' && kind !== 'win') throw fail(400, 'Unknown animation slot');
+  try { fs.unlinkSync(path.join(CUSTOM_ANIM_DIR, `${req.user.id}-${kind}.gif`)); } catch {} // already gone is fine
+  await db.query(`UPDATE users SET ${kind === 'draw' ? 'draw_anim' : 'win_anim'} = NULL WHERE id = ?`, [req.user.id]);
   const [[u]] = await db.query('SELECT draw_anim, win_anim FROM users WHERE id = ?', [req.user.id]);
   const [rooms] = await db.query(
     "SELECT r.code FROM rooms r JOIN room_players p ON p.room_id = r.id WHERE p.user_id = ? AND r.status = 'lobby'", [req.user.id]);

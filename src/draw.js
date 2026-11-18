@@ -16,7 +16,7 @@ const MAX_POINTS = 40000;
 const games = new Map();
 let io, hooks;
 
-const clear = (g) => { g.timers.forEach(clearTimeout); g.timers.length = 0; };
+const clear = (g) => { g.timers.forEach(clearTimeout); g.timers.length = 0; clearTimeout(g.endTimer); g.endTimer = null; };
 const after = (g, fn, ms) => g.timers.push(setTimeout(fn, ms));
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
 const pick = (arr, n) => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); };
@@ -136,14 +136,17 @@ function chooseWord(g, word) {
     if (!p.isBot || Math.random() > BOT_GUESS_CHANCE[g.difficulty]) continue;
     after(g, () => { if (g.phase === 'drawing' && g.strokes.length) correct(g, p); }, g.drawSeconds * 1000 * (0.25 + Math.random() * 0.6));
   }
-  after(g, () => endTurn(g), g.drawSeconds * 1000);
+  g.endTimer = setTimeout(() => endTurn(g), g.drawSeconds * 1000);
 }
 
-// Scoring copied from scribble.rs (an open-source skribbl clone), its "competitive" setting, because skribbl.io's own formula is not published:
-//   points = int(10 + 290 * (1 - 3 / drawSeconds) ^ secondsElapsed) + hintsLeft * floor(120 / hintSlots)
-// so a guess is worth most at the start and loses value every second, and every hint that is revealed before you guess takes away a share of 120.
-// The order of guessing does not matter. Maximum: 10 + 290 + 120 = 420.
-const SCORE = { base: 10, maxBonus: 290, decline: 3, maxHint: 120 };
+// Scoring modeled on skribbl.io's observed behaviour (its own formula is closed-source and unpublished, so these
+// numbers come from community testing, e.g. r/skribbl): a guess is worth most right away and loses value every
+// second, every hint already shown takes away a share of the hint pool, and the order of guessing otherwise does
+// not matter (wrong guesses or spam never cost points). Maximum for an instant, hint-free guess: 10 + 390 = 400,
+// close to a hint-free sweep's 400-500. The first correct guess also drops the turn's clock to 30s (never extends
+// it) so a slow last few guessers can't drag the turn out, same as skribbl.io.
+const SCORE = { base: 10, maxBonus: 390, decline: 3, maxHint: 100 };
+const RUSH_MS = 30000; // once somebody guesses, at most this long is left on the clock
 function guessScore(g) {
   const secondsLeft = Math.floor(Math.max(0, g.endsAt - Date.now()) / 1000);
   const elapsed = Math.min(g.drawSeconds, Math.max(0, g.drawSeconds - secondsLeft));
@@ -160,6 +163,12 @@ function correct(g, p) {
   p.score += pts;
   g.gains[p.id] = pts;
   if (!p.isBot) p.mp++;
+  // skribbl.io: the first correct guess drops the remaining time to 30s (if more than that was left)
+  if (g.guessed.size === 1 && g.endsAt - Date.now() > RUSH_MS) {
+    g.endsAt = Date.now() + RUSH_MS;
+    clearTimeout(g.endTimer);
+    g.endTimer = setTimeout(() => endTurn(g), RUSH_MS);
+  }
   io.to(g.code).emit('draw:chat', { kind: 'correct', name: p.name });
   push(g);
   toUser(g, p, 'draw:word', { word: g.word }); // whoever guessed it gets to see the word, like the drawer

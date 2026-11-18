@@ -1,4 +1,5 @@
-// the animations players can pick (the GIFs in public/media/anim/<id>.gif)
+// the animations players can pick (the GIFs in public/media/anim/<id>.gif). This fixed list ships with the repo;
+// an admin can add more on top of it through the CMS (stored in the anim_presets table, same file layout) - see allAnims().
 const ANIMS = [
   { id: 'cinema', name: 'Absolute Cinema' },
   { id: 'shush', name: 'Shush' },
@@ -22,18 +23,30 @@ const ANIMS = [
   { id: 'medic', name: 'Smug Medic' },
   { id: 'pog', name: 'Pog' },
 ];
-const animId = (v) => (ANIMS.some((a) => a.id === v) ? v : null);
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 const EXT = ['mp4', 'webm', 'gif', 'webp', 'png'];
+
+// the built-in list plus whatever an admin added (anim_presets), merged in one place so every caller agrees on it
+async function allAnims() {
+  const [rows] = await db.query('SELECT id, name FROM anim_presets ORDER BY created_at');
+  return [...ANIMS, ...rows];
+}
+// true if v is a selectable animation id (built-in or admin-added); used to validate a player's choice before saving it
+async function animId(v) {
+  if (ANIMS.some((a) => a.id === v)) return v;
+  const [[row]] = await db.query('SELECT id FROM anim_presets WHERE id = ?', [v]);
+  return row ? v : null;
+}
 // { id: 'mp4' | ... } for the animations whose file exists
-function scanAnims(dir) {
+function scanAnims(dir, list = ANIMS) {
   const out = {};
-  for (const a of ANIMS) { const e = EXT.find((x) => fs.existsSync(path.join(dir, a.id + '.' + x))); if (e) out[a.id] = e; }
+  for (const a of list) { const e = EXT.find((x) => fs.existsSync(path.join(dir, a.id + '.' + x))); if (e) out[a.id] = e; }
   return out;
 }
 // how long one play of each image clip lasts, in ms (durations.json, written when the clips were prepared)
 function durations(dir) {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'durations.json'), 'utf8')); } catch { return {}; }
 }
-module.exports = { ANIMS, animId, scanAnims, durations };
+module.exports = { ANIMS, allAnims, animId, scanAnims, durations };

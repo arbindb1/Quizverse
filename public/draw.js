@@ -46,6 +46,26 @@ function fitBoard() {
 }
 if (!window.__fitBoard) { window.__fitBoard = true; window.addEventListener('resize', () => { if (typeof fitBoard === 'function') fitBoard(); }); }
 
+// Switching tabs (or any click elsewhere) blurs the guess box like any input on any page; skribbl keeps typing
+// effortless by refocusing it on its own, so players don't have to click back in first. We do the same: coming
+// back to the tab, or just starting to type, refocuses #dguess as long as nothing else (a menu, another field) needs the keystrokes.
+function refocusGuess() {
+  const g = document.getElementById('dguess');
+  if (g && !g.disabled && document.activeElement !== g && !document.querySelector('.pmenu')) g.focus();
+}
+if (!window.__dguessFocus) {
+  window.__dguessFocus = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && document.body.classList.contains('draw-live')) refocusGuess();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (!document.body.classList.contains('draw-live') || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key.length === 1 || e.key === 'Backspace') refocusGuess(); // a printable key typed anywhere: pick up where skribbl would
+  });
+}
+
 const dCanvas = () => document.getElementById('dcanvas');
 const amDrawer = () => R && R.d && R.d.s && myPlayer() && R.d.s.drawerId === myPlayer().id;
 
@@ -212,13 +232,31 @@ function buildDrawShell() {
 
 // ----- the animation (GIF) a player picked for their drawing turn: it pops up big when they start drawing, then sits small in the corner
 let ANIM_FILES = {}, ANIM_NAMES = {}, ANIM_MS = {}; // id -> file extension of the clips that exist, id -> display name (from /api/anims)
-const animSrc = (id) => (ANIM_FILES[id] ? '/media/anim/' + id + '.' + ANIM_FILES[id] : '');
-const animEl = (id, cls = '') => { const s = animSrc(id); if (!s) return ''; if (/\.(webp|png)$/.test(s)) cls += ' tr'; /* transparent clips have no frame */ return /\.(mp4|webm)$/.test(s) ? `<video class="${cls}" src="${s}#t=0.1" autoplay loop muted playsinline preload="auto"></video>` : `<img class="${cls}" alt="" src="${s}">`; };
+// 'custom' is a per-player uploaded GIF, not a shared preset, so its file path needs who owns it and which slot (draw/win)
+const animSrc = (id, ownerId, kind) => (id === 'custom' ? (ownerId ? `/media/anim/custom/${ownerId}-${kind}.gif` : '') : (ANIM_FILES[id] ? '/media/anim/' + id + '.' + ANIM_FILES[id] : ''));
+const animEl = (id, cls = '', ownerId, kind) => { const s = animSrc(id, ownerId, kind); if (!s) return ''; if (/\.(webp|png)$/.test(s)) cls += ' tr'; /* transparent clips have no frame */ return /\.(mp4|webm)$/.test(s) ? `<video class="${cls}" src="${s}#t=0.1" autoplay loop muted playsinline preload="auto"></video>` : `<img class="${cls}" alt="" src="${s}">`; };
 const animsReady = fetch('/api/anims').then((r) => r.json()).then((d) => { ANIM_FILES = d.files || {}; ANIM_MS = d.ms || {}; ANIM_NAMES = Object.fromEntries((d.list || []).map((a) => [a.id, a.name])); }).catch(() => {});
+// upload a player's own GIF for the 'draw' or 'win' slot: sent as the raw file body, not JSON, since it can be a few MB.
+// anything over 2MB is compressed server-side (resized, fewer colours), so this just rejects files that have no shot at all.
+async function uploadAnim(kind, file) {
+  if (!/\.gif$/i.test(file.name) && file.type !== 'image/gif') return toast('Please choose a .gif file');
+  if (file.size > 8 * 1024 * 1024) return toast('GIF must be 8MB or smaller');
+  try {
+    const res = await fetch('/api/profile/anim/upload/' + kind, {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/gif', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: file,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    R.profile = { ...R.profile, ...data };
+    drawRoom();
+  } catch (e) { toast(e.message); }
+}
 function drawAnimSticker() {
   const el = document.getElementById('danim'), s = R.d && R.d.s;
   if (!el || !s) return;
-  const p = R.pl && R.pl[s.drawerId], src = p && animSrc(p.drawAnim);
+  const p = R.pl && R.pl[s.drawerId], src = p && animSrc(p.drawAnim, p.id, 'draw');
   if (s.phase !== 'drawing' || !src) { el.className = 'danim'; el.innerHTML = ''; R.d.animKey = null; clearTimeout(R.d.animT); return; }
   const key = s.round + ':' + s.drawerId + ':' + s.endsAt;
   if (R.d.animKey === key) return;
@@ -227,7 +265,7 @@ function drawAnimSticker() {
   clearTimeout(R.d.animT);
   if (!fresh) { el.className = 'danim'; el.innerHTML = ''; return; } // joined late: the clip already played
   // the clip covers the whole whiteboard until it has played once, then it is gone (no thumbnail stays behind)
-  el.innerHTML = animEl(p.drawAnim) + '<span>' + esc(p.name) + '</span>';
+  el.innerHTML = animEl(p.drawAnim, '', p.id, 'draw') + '<span>' + esc(p.name) + '</span>';
   el.className = 'danim pop';
   const done = () => { if (R.d.animKey === key) { el.className = 'danim'; el.innerHTML = ''; } };
   const v = el.querySelector('video');
@@ -367,8 +405,9 @@ function podiumHtml(board, myId) {
   const slot = (rank, cls) => {
     const s = board[rank];
     if (!s) return `<div class="pod ${cls}"></div>`;
-    const wsrc = animSrc(s.winAnim || (R.pl && R.pl[s.id] && R.pl[s.id].winAnim)); // the GIF the winner picked, above their picture
-    return `<div class="pod ${cls}"><div class="pod-who">${wsrc ? animEl(wsrc && (s.winAnim || R.pl[s.id].winAnim), 'pod-anim ' + (rank === 0 ? 'pod-lg' : '')) : ''}${rank === 0 ? '<div class="crown">👑</div>' : ''}${charOf(s.id, rank === 0 ? 'lg' : 'md', rank === 0 ? 'a-champion' : '')}
+    const winAnim = s.winAnim || (R.pl && R.pl[s.id] && R.pl[s.id].winAnim); // the GIF the winner picked, above their picture
+    const wsrc = animSrc(winAnim, s.id, 'win');
+    return `<div class="pod ${cls}"><div class="pod-who">${wsrc ? animEl(winAnim, 'pod-anim ' + (rank === 0 ? 'pod-lg' : ''), s.id, 'win') : ''}${rank === 0 ? '<div class="crown">👑</div>' : ''}${charOf(s.id, rank === 0 ? 'lg' : 'md', rank === 0 ? 'a-champion' : '')}
       <div class="pod-name">${esc(s.name)}</div><div class="pod-score">${s.score} pts</div></div><div class="pod-step"><span>${rank + 1}</span></div></div>`;
   };
   return `<div class="card podium-card"><h2 style="text-align:center">🏆 ${board[0] ? esc(board[0].name) + ' wins!' : 'Game over'}</h2><div class="podium">${slot(1, 'second')}${slot(0, 'first')}${slot(2, 'third')}</div>
@@ -424,7 +463,7 @@ function drawSkrLobby(L, isHost, link) {
     <div class="skl-card skl-side"><div class="skl-h">You</div>
       <div class="skl-me">${charHtml({ skin: R.profile ? R.profile.skin : 'custom', look: R.profile ? R.profile.look : null, name: me.username }, 'md', 'a-idle')}<b>${esc(me.username)}</b></div>
       <a class="btn skl-edit" href="#/customize">🎭 Customize your doodle</a>
-      ${Object.keys(ANIM_FILES).length ? `<div class="skl-anim">${[['draw', 'When you draw', R.profile && R.profile.drawAnim], ['win', 'If you finish top 3', R.profile && R.profile.winAnim]].map(([k, label, cur]) => `<b>${label}</b><div class="anim-grid">${[['', 'None'], ...Object.keys(ANIM_FILES).map((id) => [id, ANIM_NAMES[id] || id])].map(([id, name]) => `<button type="button" class="anim-t ${(cur || '') === id ? 'on' : ''}" data-ak="${k}" data-aid="${id}" title="${name}">${id ? animEl(id) : '<span>🚫</span>'}</button>`).join('')}</div>`).join('')}</div>` : ''}
+      <div class="skl-anim">${[['draw', 'When you draw', R.profile && R.profile.drawAnim], ['win', 'If you finish top 3', R.profile && R.profile.winAnim]].map(([k, label, cur]) => `<b>${label}</b><div class="anim-grid">${[['', 'None'], ...Object.keys(ANIM_FILES).map((id) => [id, ANIM_NAMES[id] || id])].map(([id, name]) => `<button type="button" class="anim-t ${(cur || '') === id ? 'on' : ''}" data-ak="${k}" data-aid="${id}" title="${name}">${id ? animEl(id) : '<span>🚫</span>'}</button>`).join('')}${cur === 'custom' ? `<span class="anim-cwrap"><button type="button" class="anim-t on" data-ak="${k}" data-aid="custom" title="Your GIF">${animEl('custom', '', me.id, k)}</button><button type="button" class="anim-del" data-ak="${k}" title="Remove your GIF">✕</button></span>` : ''}<label class="anim-t anim-up" title="Upload your own GIF (8MB max, bigger ones get compressed)">⬆️<input type="file" accept=".gif,image/gif" data-ak="${k}" class="anim-up-input" hidden></label></div>`).join('')}</div>
       <div class="skl-rules"><b>How scoring works</b><span>A correct guess earns up to 420 points: the earlier you guess, the more you get (the bonus shrinks every second), plus a share of up to 120 for every hint that has not been shown yet. The order of guessing does not matter.</span><span>The drawer gets the average of all other players' points, so players who did not guess count as 0.</span></div>
       ${isHost ? '' : '<button class="ghost" id="leave">Leave room</button>'}</div>
   </div>`;
@@ -440,6 +479,11 @@ function drawSkrLobby(L, isHost, link) {
   ['#max', '#ppm', '#dtime', '#wcount', '#hints', '#bots', '#diff', '#cwords', '#conly'].forEach((s) => $(s) && ($(s).onchange = patch));
   document.querySelectorAll('.anim-t').forEach((b) => (b.onclick = async () => {
     try { const r = await api('POST', '/profile/anim', { [b.dataset.ak === 'draw' ? 'draw_anim' : 'win_anim']: b.dataset.aid || null }); R.profile = { ...R.profile, ...r }; drawRoom(); } catch (e) { toast(e.message); }
+  }));
+  document.querySelectorAll('.anim-up-input').forEach((inp) => (inp.onchange = () => { const f = inp.files[0]; if (f) uploadAnim(inp.dataset.ak, f); }));
+  document.querySelectorAll('.anim-del').forEach((b) => (b.onclick = async () => {
+    if (!confirm('Remove your uploaded GIF?')) return;
+    try { const r = await api('DELETE', '/profile/anim/upload/' + b.dataset.ak); R.profile = { ...R.profile, ...r }; drawRoom(); } catch (e) { toast(e.message); }
   }));
   if ($('#fill')) $('#fill').onclick = async () => { try { await api('PATCH', '/rooms/' + L.code, { fill_bots: true, bot_difficulty: $('#diff').value }); } catch (e) { toast(e.message); } };
   $('#copy').onclick = async () => {

@@ -7,7 +7,7 @@ const game = require('./game');
 const api = require('./api');
 const { seed } = require('./seed');
 const { scanMedia } = require('./media');
-const { ANIMS, scanAnims, durations } = require('./anims');
+const { allAnims, scanAnims, durations } = require('./anims');
 const track = require('./track');
 const { router: adminRouter, bootstrapAdmins } = require('./admin');
 
@@ -15,7 +15,10 @@ const app = express();
 app.set('trust proxy', 1); // behind Coolify's proxy: req.ip is the visitor, not the proxy
 app.use(express.json({ limit: '200kb' }));
 const MEDIA_DIR = path.join(__dirname, '..', 'public', 'media');
-app.get('/api/anims', (req, res) => res.set('Cache-Control', 'no-store').json({ list: ANIMS, files: scanAnims(path.join(MEDIA_DIR, 'anim')), ms: durations(path.join(MEDIA_DIR, 'anim')) }));
+app.get('/api/anims', async (req, res) => {
+  const list = await allAnims();
+  res.set('Cache-Control', 'no-store').json({ list, files: scanAnims(path.join(MEDIA_DIR, 'anim'), list), ms: durations(path.join(MEDIA_DIR, 'anim')) });
+});
 app.get('/api/media', (req, res) => res.set('Cache-Control', 'no-store').json(scanMedia(MEDIA_DIR)));
 // the spreadsheet reader used by the quiz editor's Excel import, served from our own server (works offline)
 app.get('/vendor/xlsx.js', (req, res) => res.sendFile(require.resolve('xlsx/dist/xlsx.full.min.js'), { maxAge: '7d' }));
