@@ -17,7 +17,6 @@ function wireDraw() {
     if (s.phase === 'choosing' && (!prev || prev.phase !== 'choosing') && !(lastMsg && lastMsg.text === note)) R.d.chat.push({ kind: 'system', text: note });
     R.phase = 'draw';
     drawDrawUI();
-    drawAnimSticker();
   });
   sock.on('draw:choices', ({ words }) => { R.d.choices = words; drawDrawUI(); });
   sock.on('draw:word', ({ word }) => { R.d.word = word; drawDrawUI(); });
@@ -181,7 +180,7 @@ function buildDrawShell() {
     <div class="card draw-top"><div class="dleft"><span id="dround" class="muted small"></span><span id="dwho" class="dwho"></span></div><div id="dhint" class="dhint"></div><span id="dtimer" class="dtimer"></span><button class="ghost fsbtn" id="dfs" title="Full screen" aria-label="Full screen">⛶</button><div class="tbar"><div id="dbar"></div></div></div>
     <div class="draw-main">
       <div class="card draw-players" id="dplayers"></div>
-      <div class="draw-center"><div class="canvas-wrap"><canvas id="dcanvas" width="${DRAW_W}" height="${DRAW_H}"></canvas><div id="danim" class="danim"></div><div id="doverlay" class="doverlay"></div><div id="dlike" class="dlike dlike-corner"></div></div><div id="dtools" class="dtools"></div></div>
+      <div class="draw-center"><div class="canvas-wrap"><canvas id="dcanvas" width="${DRAW_W}" height="${DRAW_H}"></canvas><div id="doverlay" class="doverlay"></div><div id="dlike" class="dlike dlike-corner"></div></div><div id="dtools" class="dtools"></div></div>
       <div class="card draw-chat"><div id="dchat" class="dchat"></div><input id="dguess" maxlength="60" autocomplete="off" placeholder="Type your guess…"></div>
     </div></div>`;
   const c = dCanvas();
@@ -230,9 +229,9 @@ function buildDrawShell() {
   repaint();
 }
 
-// ----- the animation (GIF) a player picked for their drawing turn: it pops up big when they start drawing, then sits small in the corner
+// ----- the animation (GIF) a player picked to show above their picture on the podium when they finish top 3
 let ANIM_FILES = {}, ANIM_NAMES = {}, ANIM_MS = {}; // id -> file extension of the clips that exist, id -> display name (from /api/anims)
-// 'custom' is a per-player uploaded GIF, not a shared preset, so its file path needs who owns it and which slot (draw/win)
+// 'custom' is a per-player uploaded GIF, not a shared preset, so its file path needs who owns it and which slot (win)
 const animSrc = (id, ownerId, kind) => (id === 'custom' ? (ownerId ? `/media/anim/custom/${ownerId}-${kind}.gif` : '') : (ANIM_FILES[id] ? '/media/anim/' + id + '.' + ANIM_FILES[id] : ''));
 const animEl = (id, cls = '', ownerId, kind) => { const s = animSrc(id, ownerId, kind); if (!s) return ''; if (/\.(webp|png)$/.test(s)) cls += ' tr'; /* transparent clips have no frame */ return /\.(mp4|webm)$/.test(s) ? `<video class="${cls}" src="${s}#t=0.1" autoplay loop muted playsinline preload="auto"></video>` : `<img class="${cls}" alt="" src="${s}">`; };
 const animsReady = fetch('/api/anims').then((r) => r.json()).then((d) => { ANIM_FILES = d.files || {}; ANIM_MS = d.ms || {}; ANIM_NAMES = Object.fromEntries((d.list || []).map((a) => [a.id, a.name])); }).catch(() => {});
@@ -253,26 +252,6 @@ async function uploadAnim(kind, file) {
     drawRoom();
   } catch (e) { toast(e.message); }
 }
-function drawAnimSticker() {
-  const el = document.getElementById('danim'), s = R.d && R.d.s;
-  if (!el || !s) return;
-  const p = R.pl && R.pl[s.drawerId], src = p && animSrc(p.drawAnim, p.id, 'draw');
-  if (s.phase !== 'drawing' || !src) { el.className = 'danim'; el.innerHTML = ''; R.d.animKey = null; clearTimeout(R.d.animT); return; }
-  const key = s.round + ':' + s.drawerId + ':' + s.endsAt;
-  if (R.d.animKey === key) return;
-  R.d.animKey = key;
-  const fresh = Date.now() - (s.endsAt - s.drawSeconds * 1000) < 3000; // joined late: no pop, straight to the corner
-  clearTimeout(R.d.animT);
-  if (!fresh) { el.className = 'danim'; el.innerHTML = ''; return; } // joined late: the clip already played
-  // the clip covers the whole whiteboard until it has played once, then it is gone (no thumbnail stays behind)
-  el.innerHTML = animEl(p.drawAnim, '', p.id, 'draw') + '<span>' + esc(p.name) + '</span>';
-  el.className = 'danim pop';
-  const done = () => { if (R.d.animKey === key) { el.className = 'danim'; el.innerHTML = ''; } };
-  const v = el.querySelector('video');
-  if (v) { v.loop = false; v.onended = done; v.play().catch(() => {}); R.d.animT = setTimeout(done, 9000); }
-  else R.d.animT = setTimeout(done, Math.min(9000, Math.max(2000, ANIM_MS[p.drawAnim] || 2500)));
-}
-
 function drawDrawUI() {
   if (!R || R.phase !== 'draw' || !R.d || !R.d.s) return;
   document.body.classList.add('draw-live');
@@ -463,7 +442,7 @@ function drawSkrLobby(L, isHost, link) {
     <div class="skl-card skl-side"><div class="skl-h">You</div>
       <div class="skl-me">${charHtml({ skin: R.profile ? R.profile.skin : 'custom', look: R.profile ? R.profile.look : null, name: me.username }, 'md', 'a-idle')}<b>${esc(me.username)}</b></div>
       <a class="btn skl-edit" href="#/customize">🎭 Customize your doodle</a>
-      <div class="skl-anim">${[['draw', 'When you draw', R.profile && R.profile.drawAnim], ['win', 'If you finish top 3', R.profile && R.profile.winAnim]].map(([k, label, cur]) => `<b>${label}</b><div class="anim-grid">${[['', 'None'], ...Object.keys(ANIM_FILES).map((id) => [id, ANIM_NAMES[id] || id])].map(([id, name]) => `<button type="button" class="anim-t ${(cur || '') === id ? 'on' : ''}" data-ak="${k}" data-aid="${id}" title="${name}">${id ? animEl(id) : '<span>🚫</span>'}</button>`).join('')}${cur === 'custom' ? `<span class="anim-cwrap"><button type="button" class="anim-t on" data-ak="${k}" data-aid="custom" title="Your GIF">${animEl('custom', '', me.id, k)}</button><button type="button" class="anim-del" data-ak="${k}" title="Remove your GIF">✕</button></span>` : ''}<label class="anim-t anim-up" title="Upload your own GIF (8MB max, bigger ones get compressed)">⬆️<input type="file" accept=".gif,image/gif" data-ak="${k}" class="anim-up-input" hidden></label></div>`).join('')}</div>
+      <div class="skl-anim">${[['win', 'If you finish top 3', R.profile && R.profile.winAnim]].map(([k, label, cur]) => `<b>${label}</b><div class="anim-grid">${[['', 'None'], ...Object.keys(ANIM_FILES).map((id) => [id, ANIM_NAMES[id] || id])].map(([id, name]) => `<button type="button" class="anim-t ${(cur || '') === id ? 'on' : ''}" data-ak="${k}" data-aid="${id}" title="${name}">${id ? animEl(id) : '<span>🚫</span>'}</button>`).join('')}${cur === 'custom' ? `<span class="anim-cwrap"><button type="button" class="anim-t on" data-ak="${k}" data-aid="custom" title="Your GIF">${animEl('custom', '', me.id, k)}</button><button type="button" class="anim-del" data-ak="${k}" title="Remove your GIF">✕</button></span>` : ''}<label class="anim-t anim-up" title="Upload your own GIF (8MB max, bigger ones get compressed)">⬆️<input type="file" accept=".gif,image/gif" data-ak="${k}" class="anim-up-input" hidden></label></div>`).join('')}</div>
       <div class="skl-rules"><b>How scoring works</b><span>A correct guess earns up to 420 points: the earlier you guess, the more you get (the bonus shrinks every second), plus a share of up to 120 for every hint that has not been shown yet. The order of guessing does not matter.</span><span>The drawer gets the average of all other players' points, so players who did not guess count as 0.</span></div>
       ${isHost ? '' : '<button class="ghost" id="leave">Leave room</button>'}</div>
   </div>`;

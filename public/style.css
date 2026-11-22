@@ -656,13 +656,7 @@ body.draw-live .draw-players .player { --av: min(62px, calc(var(--prow, 74px) - 
 body.draw-live.skr .draw-players .player .pa .char.sm { --s: var(--av); }
 body.draw-live .draw-players.cols2 .player { --av: 34px; }
 
-/* picked animations (GIFs): sticker while drawing, podium sticker, picker in the waiting room */
-.danim { position: absolute; z-index: 4; pointer-events: none; display: none; }
-.danim img { display: block; width: 100%; border-radius: 12px; border: 4px solid #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); background: #fff; }
-.danim span { display: block; text-align: center; font-weight: 800; font-size: 13px; margin-top: 4px; color: #fff; text-shadow: 0 1px 3px #000; }
-.danim.pop { display: block; left: 50%; top: 50%; width: min(36%, 300px); transform: translate(-50%, -50%); animation: animpop 0.5s cubic-bezier(.2, 1.6, .4, 1); }
-.danim.corner { display: block; left: 10px; top: 10px; width: clamp(70px, 9%, 120px); transition: all 0.4s; }
-@keyframes animpop { from { transform: translate(-50%, -50%) scale(0.2) rotate(-12deg); opacity: 0; } to { transform: translate(-50%, -50%) scale(1) rotate(0); opacity: 1; } }
+/* picked animations (GIFs): podium sticker, picker in the waiting room */
 .pod-anim { display: block; margin: 0 auto 4px; width: 104px; max-height: 104px; object-fit: cover; border-radius: 10px; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
 .pod-anim.pod-lg { width: 136px; max-height: 136px; }
 .skl-anim { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; font-size: 13px; }
@@ -673,21 +667,13 @@ body.draw-live .draw-players.cols2 .player { --av: 34px; }
 .anim-up { cursor: pointer; border-style: dashed; border-color: #c7cdf7; color: #6366f1; }
 .anim-cwrap { position: relative; }
 .anim-del { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 2px solid #fff; background: #ef4444; color: #fff; font-size: 11px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.danim video { display: block; width: 100%; border-radius: 12px; border: 4px solid #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); background: #fff; }
 video.pod-anim { object-fit: cover; }
 .anim-t video { width: 100%; height: 100%; object-fit: cover; }
 .pod-anim { height: 104px; max-height: none; background: #eef2ff; }
 .pod-anim.pod-lg { height: 136px; }
 
 /* clips with a transparent background (webp/png) are shown without a frame */
-.danim img.tr { border: 0; background: none; box-shadow: none; }
 .pod-anim.tr { border: 0; background: none; box-shadow: none; object-fit: contain; width: auto; max-width: 145px; }
 .pod-anim.pod-lg.tr { max-width: 180px; }
 .anim-t img.tr { object-fit: contain; }
 .anim-grid { grid-template-columns: repeat(5, 1fr); }
-/* the drawer's clip covers the whole whiteboard when it pops up (then shrinks to the corner) */
-.danim.pop { left: 0; top: 0; width: 100%; height: 100%; transform: none; animation: animfull 0.45s ease-out; background: rgba(255, 255, 255, 0.92); }
-.danim.pop img, .danim.pop video { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; object-fit: cover; background: none; }
-.danim.pop img.tr { object-fit: contain; }
-.danim.pop span { position: absolute; left: 0; right: 0; bottom: 14px; font-size: clamp(18px, 3vw, 34px); margin: 0; }
-@keyframes animfull { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
