@@ -293,6 +293,9 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .sz i { display: block; background: currentColor; border-radius: 50%; }
 .draw-chat { display: flex; flex-direction: column; height: 520px; }
 .dchat { flex: 1; overflow-y: auto; font-size: 14px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.dguess-wrap { position: relative; }
+.dguess-wrap #dguess { padding-right: 36px; }
+.dguesslen { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 700; color: var(--muted); pointer-events: none; }
 .cm.ok { color: var(--accent2); } .cm.warn { color: var(--warn); } .cm.priv { color: var(--accent2); font-style: italic; }
 @media (max-width: 900px) { .draw-main { grid-template-columns: 1fr; } .draw-chat { height: 240px; } .draw-players { order: 3; } }
 .draw .ok, .doverlay .ok { color: var(--accent2); }
@@ -625,6 +628,7 @@ body.skr .dchat .cm.ok { background: transparent; color: #12a225; font-weight: 8
 body.skr .dchat .cm.ok * { color: #12a225; }
 body.skr .dchat .cm.warn, body.skr .dchat .cm.warn * { color: #e0791a; background: transparent; font-weight: 800; }
 body.skr .draw-chat input { background: #fff; color: #1b2a5a; border: 2px solid #c9d4ff; }
+body.skr .dguesslen { color: #8a96c4; }
 body.skr .draw-chat input::placeholder { color: #8a96c4; }
 body.skr .dtools { background: #fff; border-radius: 6px; padding: 6px; }
 body.skr .dtools button.ghost { color: #1b2a5a; background: #eef2ff; }

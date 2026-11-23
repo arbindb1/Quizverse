@@ -3,18 +3,64 @@ const DRAW_COLORS = ['#000000', '#7f7f7f', '#ffffff', '#e53935', '#fb8c00', '#fd
 const DRAW_SIZES = [3, 8, 18];
 const DRAW_W = 1280, DRAW_H = 800; // 16:10: a wide board; strokes are sent as 0..1 fractions, so every screen shows the same picture
 
+/* ----- sound effects: Skribbl-style cues. Real clips (public/media/sfx/) for the actions named in them; two tiny
+ * synthesized tones (Web Audio) fill in cues that have no matching clip, so nothing stays silent. ----- */
+const sfx = (() => {
+  const clips = {}; // name -> HTMLAudioElement, loaded once and cloned per play so overlapping cues don't cut each other off
+  const CLIP_FILES = {
+    join: 'join.mp3', leave: 'leave.mp3', roundstart: 'round-start.mp3', tick: 'tick.mp3',
+    guess: 'guess.mp3', success: 'success.mp3', roundSuccess: 'round-success.mp3', roundFail: 'round-fail.mp3',
+  };
+  for (const [name, file] of Object.entries(CLIP_FILES)) { const a = new Audio('/media/sfx/' + file); a.preload = 'auto'; clips[name] = a; }
+  const play = (name, vol = 0.6) => { const base = clips[name]; if (!base) return; const a = base.cloneNode(); a.volume = vol; a.play().catch(() => {}); };
+
+  let ctx = null;
+  const get = () => { // the browser only lets AudioContext start after a user gesture, so build it lazily on first use
+    if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; } }
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    return ctx;
+  };
+  const tone = (c, freq, at, dur, vol = 0.2, type = 'sine') => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, c.currentTime + at);
+    g.gain.setValueAtTime(0, c.currentTime + at);
+    g.gain.linearRampToValueAtTime(vol, c.currentTime + at + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + at + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(c.currentTime + at); o.stop(c.currentTime + at + dur + 0.02);
+  };
+  const seq = (notes) => { const c = get(); if (c) notes.forEach(([freq, at, dur, vol, type]) => tone(c, freq, at, dur, vol, type)); };
+
+  return {
+    join: () => play('join', 0.5), // a player joins the waiting room
+    leave: () => play('leave', 0.5), // a player leaves the waiting room
+    turn: () => play('roundstart', 0.6), // a new turn begins: the drawer is choosing a word
+    tick: () => play('tick', 0.5), // countdown tick in the last seconds of drawing
+    correctMe: () => play('success', 0.7), // you guessed the word
+    correctOther: () => play('guess', 0.55), // somebody else guessed the word
+    reveal: (guessedAny) => play(guessedAny ? 'roundSuccess' : 'roundFail', 0.6), // the turn ends: at least one correct guess, or none
+    close: () => seq([[320, 0, 0.12, 0.15, 'triangle']]), // "so close!" nudge: no matching clip, so a small synthesized buzz
+    win: () => seq([[523, 0, 0.12, 0.18], [659, 0.12, 0.12, 0.18], [784, 0.24, 0.12, 0.18], [1047, 0.36, 0.3, 0.2]]), // match over: no matching clip either, a short synthesized fanfare
+  };
+})();
+
 function wireDraw() {
   R.d = { s: null, word: null, choices: null, strokes: [], chat: [], color: '#000000', size: 8, tool: 'pen', built: false, pending: [], strokeId: 0, drawing: false };
   R.dtick = setInterval(drawTick, 250);
+  R.dIsDraw = false; // set once we know this room is a Draw & Guess game, so game:end only plays the draw fanfare here
 
-  sock.on('draw:begin', (p) => { R.phase = 'draw'; R.pl = p.players; R.d.rounds = p.rounds; drawDrawUI(); });
+  sock.on('draw:begin', (p) => { R.dIsDraw = true; R.phase = 'draw'; R.pl = p.players; R.d.rounds = p.rounds; drawDrawUI(); });
   sock.on('draw:state', (s) => {
     const prev = R.d.s;
     R.d.s = s;
     if (!prev || prev.round !== s.round || prev.drawerId !== s.drawerId || s.phase === 'choosing') { R.d.word = null; R.d.myVote = 0; if (s.phase === 'choosing') R.d.choices = null; }
     const note = `${nm(s.drawerId)} is choosing a word…`;
     const lastMsg = R.d.chat[R.d.chat.length - 1];
-    if (s.phase === 'choosing' && (!prev || prev.phase !== 'choosing') && !(lastMsg && lastMsg.text === note)) R.d.chat.push({ kind: 'system', text: note });
+    if (s.phase === 'choosing' && (!prev || prev.phase !== 'choosing')) {
+      if (!(lastMsg && lastMsg.text === note)) R.d.chat.push({ kind: 'system', text: note });
+      sfx.turn();
+    }
+    if (s.phase === 'reveal' && (!prev || prev.phase !== 'reveal')) sfx.reveal(s.guessed.length > 0);
     R.phase = 'draw';
     drawDrawUI();
   });
@@ -28,8 +74,12 @@ function wireDraw() {
   sock.on('draw:chat', (m) => {
     R.d.chat.push(m);
     if (R.d.chat.length > 80) R.d.chat.shift();
+    const mine = myPlayer();
+    if (m.kind === 'correct') sfx[mine && m.pid === mine.id ? 'correctMe' : 'correctOther']();
+    else if (m.kind === 'close') sfx.close();
     drawChat();
   });
+  sock.on('game:end', () => { if (R.dIsDraw) sfx.win(); });
 }
 
 // Size the board to the space that is really there: as wide as the window allows, as tall as the height allows; the two side panels share whatever is left over
@@ -181,7 +231,7 @@ function buildDrawShell() {
     <div class="draw-main">
       <div class="card draw-players" id="dplayers"></div>
       <div class="draw-center"><div class="canvas-wrap"><canvas id="dcanvas" width="${DRAW_W}" height="${DRAW_H}"></canvas><div id="doverlay" class="doverlay"></div><div id="dlike" class="dlike dlike-corner"></div></div><div id="dtools" class="dtools"></div></div>
-      <div class="card draw-chat"><div id="dchat" class="dchat"></div><input id="dguess" maxlength="60" autocomplete="off" placeholder="Type your guess…"></div>
+      <div class="card draw-chat"><div id="dchat" class="dchat"></div><div class="dguess-wrap"><input id="dguess" maxlength="60" autocomplete="off" placeholder="Type your guess…"><span id="dguesslen" class="dguesslen"></span></div></div>
     </div></div>`;
   const c = dCanvas();
   bindCanvas(c);
@@ -209,7 +259,9 @@ function buildDrawShell() {
     if (e.key !== 'Enter' || !e.target.value.trim()) return;
     sock.emit('draw:guess', e.target.value);
     e.target.value = '';
+    updateGuessLen();
   };
+  $('#dguess').oninput = updateGuessLen;
   $('#dtools').onclick = (e) => {
     const b = e.target.closest('[data-dc]');
     if (!b) return;
@@ -273,6 +325,7 @@ function drawDrawUI() {
     g.disabled = s.phase !== 'drawing';
     g.placeholder = drawer ? 'Chat with the guessers…' : (s.guessed.includes(myPlayer() && myPlayer().id) ? 'You got it! Chat here…' : 'Type your guess…');
   }
+  updateGuessLen();
   drawTick();
   fitBoard();
 }
@@ -353,6 +406,14 @@ function drawTools() {
     <button class="ghost tool ${d.tool === 'eraser' ? 'on' : ''}" data-dc="eraser" aria-pressed="${d.tool === 'eraser'}">🧽 Eraser</button><button class="ghost" data-dc="undo">↩ Undo</button><button class="ghost" data-dc="clear">🗑 Clear</button>`;
 }
 
+// a small counter next to the guess box, like skribbl's letter count, showing how many characters are typed so far
+function updateGuessLen() {
+  const g = $('#dguess'), len = $('#dguesslen');
+  if (!g || !len) return;
+  const n = g.value.trim().length;
+  len.textContent = n ? String(n) : '';
+}
+
 function drawChat() {
   const el = $('#dchat');
   if (!el) return;
@@ -370,6 +431,8 @@ function drawTick() {
   const left = Math.max(0, Math.ceil((R.d.s.endsAt - Date.now()) / 1000));
   el.textContent = R.d.s.phase === 'drawing' ? `⏱ ${left}s` : R.d.s.phase === 'choosing' ? `${left}s` : '';
   el.classList.toggle('low', R.d.s.phase === 'drawing' && left <= 10);
+  if (R.d.s.phase === 'drawing' && left > 0 && left <= 10 && left !== R.d.lastTick) { R.d.lastTick = left; sfx.tick(); }
+  if (R.d.s.phase !== 'drawing') R.d.lastTick = null;
   const bar = document.getElementById('dbar');
   if (bar) {
     const total = R.d.s.phase === 'choosing' ? 15 : R.d.s.drawSeconds;

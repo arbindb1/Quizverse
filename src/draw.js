@@ -54,7 +54,7 @@ async function start(state) {
   const g = {
     code: state.code, roomId: room.id, players, words, difficulty: state.botDifficulty,
     rounds: state.questionsPerMatch, drawSeconds: state.drawTime || 80, wordCount: state.wordCount || 3, hintCount: state.hintCount === undefined ? 2 : state.hintCount,
-    order: humans.map((p) => p.id).reverse(), round: 1, turn: -1, // like skribbl: the list keeps its join order, the drawer goes from the bottom up to the top
+    order: humans.map((p) => p.id), round: 1, turn: -1, // unlike skribbl: turns follow join order, so whoever joined first (the host) draws first
     phase: 'wait', drawerId: null, word: null, options: [], used: new Set(),
     guessed: new Map(), gains: {}, strokes: [], points: 0, endsAt: 0, hintMask: [], hintAt: [],
     timers: [], chatAt: new Map(), votes: new Map(), kickVotes: new Map(), hostId: state.hostId,
@@ -169,7 +169,7 @@ function correct(g, p) {
     clearTimeout(g.endTimer);
     g.endTimer = setTimeout(() => endTurn(g), RUSH_MS);
   }
-  io.to(g.code).emit('draw:chat', { kind: 'correct', name: p.name });
+  io.to(g.code).emit('draw:chat', { kind: 'correct', name: p.name, pid: p.id });
   push(g);
   toUser(g, p, 'draw:word', { word: g.word }); // whoever guessed it gets to see the word, like the drawer
   if (g.guessed.size >= g.players.size - 1) endTurn(g); // everybody has it

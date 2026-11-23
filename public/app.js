@@ -839,7 +839,16 @@ function viewRoom(code) {
   };
   app.onpaste = (e) => { if (e.target.id === 'typebox') e.preventDefault(); }; // no copy-paste cheating
 
-  sock.on('lobby', (s) => { R.lobby = s; drawRoom(); });
+  sock.on('lobby', (s) => {
+    const prev = R.lobby;
+    if (prev && s.gameType === 'draw' && s.status === 'waiting' && typeof sfx !== 'undefined') {
+      const prevIds = new Set(prev.players.map((p) => p.id)), curIds = new Set(s.players.map((p) => p.id));
+      if ([...curIds].some((id) => !prevIds.has(id))) sfx.join();
+      else if ([...prevIds].some((id) => !curIds.has(id))) sfx.leave();
+    }
+    R.lobby = s;
+    drawRoom();
+  });
 
   sock.on('game:bracket', (p) => {
     R.bracket = p.rounds; R.pl = p.players; R.perMatch = p.perMatch;
